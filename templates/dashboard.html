@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Bridge Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="">Dashboard</h1>
+    <p class="page-subtitle">Overview of your EthernetIP and SNMP-MQTT bridge connections</p>
+</div>
+
+<div class="status-grid">
+    <div class="status-card">
+        <div class="status-card-header">
+            <div class="status-card-icon">
+                <span class="material-icons">device_hub</span>
+            </div>
+            <div>
+                <div class="status-card-title">EthernetIP</div>
+                <div class="status-card-subtitle">PLC Communication</div>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot {% if eip_status.connected %}connected{% else %}disconnected{% endif %}"></span>
+            <span class="status-text">{% if eip_status.connected %}Connected{% else %}Disconnected{% endif %}</span>
+        </div>
+        <div class="status-message">{{ eip_status.message }}</div>
+        <div class="stats-row">
+            <div class="stat-item">
+                <span class="stat-value">{{ eip_configs|length }}</span>
+                <span class="stat-label">Devices</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ tag_count }}</span>
+                <span class="stat-label">Tags</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-card">
+        <div class="status-card-header">
+            <div class="status-card-icon">
+                <span class="material-icons">dns</span>
+            </div>
+            <div>
+                <div class="status-card-title">SNMP</div>
+                <div class="status-card-subtitle">Network Monitoring</div>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot {% if snmp_status.connected %}connected{% else %}disconnected{% endif %}"></span>
+            <span class="status-text">{% if snmp_status.connected %}Connected{% else %}Disconnected{% endif %}</span>
+        </div>
+        <div class="status-message">{{ snmp_status.message }}</div>
+        <div class="stats-row">
+            <div class="stat-item">
+                <span class="stat-value">{{ snmp_configs|length }}</span>
+                <span class="stat-label">Devices</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ object_count }}</span>
+                <span class="stat-label">Objects</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-card">
+        <div class="status-card-header">
+            <div class="status-card-icon">
+                <span class="material-icons">cloud_upload</span>
+            </div>
+            <div>
+                <div class="status-card-title">MQTT</div>
+                <div class="status-card-subtitle">Message Broker</div>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot {% if mqtt_status.connected %}connected{% else %}disconnected{% endif %}"></span>
+            <span class="status-text">{% if mqtt_status.connected %}Connected{% else %}Disconnected{% endif %}</span>
+        </div>
+        <div class="status-message">{{ mqtt_status.message }}</div>
+        <div class="stats-row">
+            <div class="stat-item">
+                <span class="stat-value">{{ mqtt_configs|length }}</span>
+                <span class="stat-label">Brokers</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- <div class="status-grid" style="margin-top: 24px;">
+    <div class="status-card">
+        <div class="status-card-header">
+            <div class="status-card-icon">
+                <span class="material-icons">sync</span>
+            </div>
+            <div>
+                <div class="status-card-title">Polling Service</div>
+                <div class="status-card-subtitle">Auto Data Collection</div>
+            </div>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot {% if polling_status.running %}connected{% else %}disconnected{% endif %}"></span>
+            <span class="status-text">{% if polling_status.running %}Running{% else %}Stopped{% endif %}</span>
+        </div>
+        <div class="status-message">{{ polling_status.message }}</div>
+        <div class="stats-row">
+            <div class="stat-item">
+                <span class="stat-value">{{ tag_count + object_count }}</span>
+                <span class="stat-label">Total Monitored</span>
+            </div>
+        </div>
+    </div>
+</div> -->
+
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2 class="card-title">Quick Actions</h2>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <a href="{{ url_for('main.config_ethernetip') }}" class="btn btn-secondary">
+                <span class="material-icons">add</span>
+                Add EthernetIP Device
+            </a>
+            <a href="{{ url_for('main.config_snmp') }}" class="btn btn-secondary">
+                <span class="material-icons">add</span>
+                Add SNMP Device
+            </a>
+            <a href="{{ url_for('main.config_mqtt') }}" class="btn btn-secondary">
+                <span class="material-icons">add</span>
+                Configure MQTT Broker
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- <div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Recent Data Trends</h2>
+    </div>
+    <div class="card-body">
+        <div class="form-row" style="margin-bottom: 16px;">
+            <div class="form-group">
+                <label class="form-label">Source Type</label>
+                <select id="chart_source_type" class="form-control" onchange="loadChartData()">
+                    <option value="ethernetip">EthernetIP Tag</option>
+                    <option value="snmp">SNMP Object</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Source ID</label>
+                <input type="number" id="chart_source_id" class="form-control" value="1" min="1" onchange="loadChartData()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Time Range</label>
+                <select id="chart_hours" class="form-control" onchange="loadChartData()">
+                    <option value="1">1 Hour</option>
+                    <option value="6">6 Hours</option>
+                    <option value="24" selected>24 Hours</option>
+                </select>
+            </div>
+        </div>
+        <canvas id="trendChart" height="80"></canvas>
+    </div>
+</div> -->
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+var chart = null;
+
+function loadChartData() {
+    var sourceType = document.getElementById('chart_source_type').value;
+    var sourceId = document.getElementById('chart_source_id').value;
+    var hours = document.getElementById('chart_hours').value;
+    
+    fetch('/api/chart-data/' + sourceType + '/' + sourceId + '?hours=' + hours)
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            updateChart(data);
+        });
+}
+
+function updateChart(data) {
+    var ctx = document.getElementById('trendChart').getContext('2d');
+    
+    if (chart) {
+        chart.destroy();
+    }
+    
+    var labels = data.labels.map(function(ts) {
+        return new Date(ts).toLocaleTimeString();
+    });
+    
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Value',
+                data: data.values,
+                borderColor: '#1976d2',
+                backgroundColor: 'rgba(25, 118, 210, 0.1)',
+                fill: true,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    display: true
+                },
+                y: {
+                    display: true
+                }
+            }
+        }
+    });
+}
+
+loadChartData();
+
+// Real-time connection status updates
+async function updateDeviceStatus() {
+    // Update EthernetIP devices
+    const eipDeviceIds = [{% for config in eip_configs %}{{ config.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+    let eipConnected = 0;
+    for (const deviceId of eipDeviceIds) {
+        try {
+            const response = await fetch('/api/ethernetip/connection-status/' + deviceId);
+            const data = await response.json();
+            if (data.success && data.connected) {
+                eipConnected++;
+            }
+        } catch (e) {}
+    }
+    
+    // Update SNMP devices
+    const snmpDeviceIds = [{% for config in snmp_configs %}{{ config.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+    let snmpConnected = 0;
+    for (const deviceId of snmpDeviceIds) {
+        try {
+            const response = await fetch('/api/snmp/connection-status/' + deviceId);
+            const data = await response.json();
+            if (data.success && data.connected) {
+                snmpConnected++;
+            }
+        } catch (e) {}
+    }
+    
+    // Update MQTT brokers
+    const mqttBrokerIds = [{% for config in mqtt_configs %}{{ config.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+    let mqttConnected = 0;
+    for (const brokerId of mqttBrokerIds) {
+        try {
+            const response = await fetch('/api/mqtt/connection-status/' + brokerId);
+            const data = await response.json();
+            if (data.success && data.connected) {
+                mqttConnected++;
+            }
+        } catch (e) {}
+    }
+    
+    // Update status indicators
+    updateStatusCard('eip', eipConnected, eipDeviceIds.length);
+    updateStatusCard('snmp', snmpConnected, snmpDeviceIds.length);
+    updateStatusCard('mqtt', mqttConnected, mqttBrokerIds.length);
+}
+
+function updateStatusCard(type, connected, total) {
+    // Find status cards by their title text
+    const cards = document.querySelectorAll('.status-card');
+    let targetCard = null;
+    
+    for (const card of cards) {
+        const title = card.querySelector('.status-card-title');
+        if (title && title.textContent.trim() === type.toUpperCase()) {
+            targetCard = card;
+            break;
+        }
+    }
+    
+    if (!targetCard) return;
+    
+    const dot = targetCard.querySelector('.status-dot');
+    const text = targetCard.querySelector('.status-text');
+    const message = targetCard.querySelector('.status-message');
+    
+    if (connected > 0) {
+        dot.className = 'status-dot connected';
+        text.textContent = 'Connected';
+        message.textContent = connected + ' of ' + total + ' devices connected';
+    } else {
+        dot.className = 'status-dot disconnected';
+        text.textContent = 'Disconnected';
+        message.textContent = total > 0 ? 'No devices connected' : 'No devices configured';
+    }
+}
+
+// Update status every 10 seconds
+updateDeviceStatus();
+setInterval(updateDeviceStatus, 10000);
+</script>
+{% endblock %}
+

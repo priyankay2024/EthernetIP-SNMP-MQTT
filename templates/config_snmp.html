@@ -1,0 +1,992 @@
+{% extends "base.html" %}
+{% block title %}SNMP Configuration{% endblock %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-content {
+        background: #fff;
+        margin: 3% auto;
+        padding: 0;
+        width: 95%;
+        max-width: 900px;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h2 {
+        margin: 0;
+        color: #333;
+        font-size: 1.5rem;
+    }
+
+    .modal-body {
+        padding: 25px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .modal-footer {
+        padding: 20px;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .close {
+        color: #666;
+        font-size: 32px;
+        font-weight: 700;
+        cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .close:hover {
+        color: #000;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #555;
+        font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: var(--primary-color);
+        color: #fff;
+    }
+
+    .btn-primary:hover {
+        background: #d63e0a;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: #fff;
+    }
+
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .actions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+
+    .actions-header h1 {
+        margin: 0;
+        color: #333;
+    }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .status-connected {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-disconnected {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .table-wrapper {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    thead {
+        background: #f8f9fa;
+    }
+
+    th {
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    td {
+        padding: 15px;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    tbody tr:hover {
+        background: #f8f9fa;
+    }
+
+    .action-btn {
+        padding: 6px 12px;
+        margin: 0 4px;
+        background: var(--primary-color);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+
+    .action-btn:hover {
+        background: #d63e0a;
+    }
+
+    .action-btn.secondary {
+        background: #6c757d;
+    }
+
+    .action-btn.secondary:hover {
+        background: #5a6268;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+
+    .empty-state i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+
+    .oid-list {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    .oid-item {
+        padding: 12px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: start;
+        gap: 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .oid-item:hover {
+        background: #f8f9fa;
+    }
+
+    .oid-item input[type="checkbox"] {
+        margin-top: 4px;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .oid-details {
+        flex: 1;
+    }
+
+    .oid-name {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+    }
+
+    .oid-number {
+        font-family: monospace;
+        color: #666;
+        font-size: 12px;
+        margin: 4px 0;
+    }
+
+    .oid-meta {
+        display: flex;
+        gap: 15px;
+        margin-top: 6px;
+    }
+
+    .oid-meta span {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 3px;
+        background: #f0f0f0;
+        color: #666;
+    }
+
+    .oid-description {
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+        font-style: italic;
+    }
+
+    .discover-section {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border: 1px dashed #dee2e6;
+    }
+
+    .discover-section p {
+        margin: 0 0 10px 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .selected-count {
+        background: var(--primary-color);
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 500;
+        margin-left: 10px;
+    }
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 25px;
+        gap: 10px
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #495057;
+        text-decoration: none
+    }
+
+    .pagination a:hover {
+        background: #f8f9fa
+    }
+
+    .pagination .active {
+        background: var(--primary-color);
+        color: #fff;
+        border-color: var(--primary-color)
+    }
+</style>
+
+<div class="actions-header">
+    <h1>SNMP Configuration</h1>
+    <button class="btn btn-primary" onclick="showAddModal()">Add New Device</button>
+</div>
+
+<!-- Search Filters -->
+<div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+    <input type="text" id="searchInput" placeholder="Search by device name or host..." 
+           style="width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+           oninput="filterTable()">
+</div>
+
+<script>
+function filterTable() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+    });
+}
+</script>
+
+<div class="table-wrapper">
+    {% if configs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Sr.No</th>
+                <th>Name</th>
+                <th>Host</th>
+                <th>Port</th>
+                <th>HWID</th>
+                <th>Community</th>
+                <th>Version</th>
+                <th>Polling (ms)</th>
+                <th>OIDs</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for config in configs %}
+            <tr>
+                <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                <td>{{ config.name }}</td>
+                <td>{{ config.host }}</td>
+                <td>{{ config.port }}</td>
+                <td>{{ config.hwid or '-' }}</td>
+                <td>{{ config.community }}</td>
+                <td>{{ config.version }}</td>
+                <td>{{ config.polling_interval }}</td>
+                <td>{{ config.objects|length }}</td>
+                <td>
+                    <span class="status-badge status-disconnected" id="status-{{ config.id }}">Checking...</span>
+                </td>
+                <td>
+                    <button class="action-btn"
+                        onclick="showEditModal({{ config.id }}, '{{ config.name }}', '{{ config.host }}', {{ config.port }}, '{{ config.hwid or '' }}', '{{ config.community }}', '{{ config.version }}', {{ config.polling_interval }})">Edit</button>
+                    <form method="POST" style="display:inline">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="config_id" value="{{ config.id }}">
+                        <button type="submit" class="action-btn secondary"
+                            onclick="return confirm('Delete this device?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <i class="material-icons">devices_other</i>
+        <h3>No SNMP devices configured</h3>
+        <p>Click "Add New Device" to get started</p>
+    </div>
+    {% endif %}
+</div>
+
+{% if pagination %}
+<div class="pagination">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('main.config_snmp', page=pagination.prev_num, device=search_device) }}">Previous</a>
+    {% endif %}
+    <span class="active">Page {{ pagination.page }}</span>
+    <span>of {{ pagination.pages }} ({{ pagination.total }} devices)</span>
+    {% if pagination.has_next %}
+    <a href="{{ url_for('main.config_snmp', page=pagination.next_num, device=search_device) }}">Next</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Add Device Modal -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Add SNMP Device</h2>
+            <button class="close" onclick="closeAddModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="addForm" method="POST">
+                <input type="hidden" name="action" value="add">
+                <input type="hidden" id="selected_oids" name="selected_oids" value="">
+
+                <div class="form-group">
+                    <label>Device Name</label>
+                    <input type="text" name="name" id="add_name" required placeholder="My SNMP Device">
+                </div>
+
+                <div class="form-group">
+                    <label>Host/IP Address</label>
+                    <input type="text" name="host" id="add_host" required placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label>Port</label>
+                    <input type="number" name="port" id="add_port" value="161" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Hardware ID (HWID)</label>
+                    <input type="text" name="hwid" id="add_hwid" placeholder="HWID">
+                </div>
+
+                <div class="form-group">
+                    <label>Community String</label>
+                    <input type="text" name="community" id="add_community" value="public" required>
+                </div>
+
+                <div class="form-group">
+                    <label>SNMP Version</label>
+                    <select name="version" id="add_version" required>
+                        <option value="v1">SNMPv1</option>
+                        <option value="v2c" selected>SNMPv2c</option>
+                        <option value="v3">SNMPv3</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Polling Interval (ms)</label>
+                    <input type="number" name="polling_interval" id="add_polling_interval" value="5000" required
+                        min="100" step="100">
+                </div>
+
+                <div class="discover-section">
+                    <p>Discover and select OIDs to monitor</p>
+                    <button type="button" class="btn btn-secondary" id="discoverBtn"
+                        onclick="discoverOIDsForNewDevice()">
+                        Discover OIDs
+                    </button>
+                    <span id="oidSelectedCount" class="selected-count" style="display:none;">0 selected</span>
+                </div>
+
+                <div id="oidListContainer" style="display:none; margin-top: 15px;">
+                    <label style="margin-bottom: 10px; display: block;">Select OIDs to Monitor:</label>
+                    <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="oidSearchFilter" placeholder="Search OIDs by name or number..."
+                            style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+                            oninput="filterOIDList()">
+                        <button type="button" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px;"
+                            onclick="toggleSelectAll()">
+                            <span id="selectAllText">Deselect All</span>
+                        </button>
+                    </div>
+                    <div id="oidList" class="oid-list"></div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
+            <button class="btn btn-primary" id="submitBtn" onclick="submitAddForm()">Add Device</button>
+        </div>
+    </div>
+</div>
+
+<!-- View OIDs Modal (for existing devices) -->
+<div id="objectsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Discovered OIDs</h2>
+            <button class="close" onclick="closeObjectsModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="objectsContent">
+                <p style="text-align:center;color:#666">Loading OIDs...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeObjectsModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Device Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Edit SNMP Device</h2>
+            <button class="close" onclick="closeEditModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editForm" method="POST">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" id="edit_config_id" name="config_id" value="">
+
+                <div class="form-group">
+                    <label>Device Name</label>
+                    <input type="text" name="name" id="edit_name" required placeholder="My SNMP Device">
+                </div>
+
+                <div class="form-group">
+                    <label>Host/IP Address</label>
+                    <input type="text" name="host" id="edit_host" required placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label>Port</label>
+                    <input type="number" name="port" id="edit_port" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Hardware ID (HWID)</label>
+                    <input type="text" name="hwid" id="edit_hwid" placeholder="HWID">
+                </div>
+
+                <div class="form-group">
+                    <label>Community String</label>
+                    <input type="text" name="community" id="edit_community" required>
+                </div>
+
+                <div class="form-group">
+                    <label>SNMP Version</label>
+                    <select name="version" id="edit_version" required>
+                        <option value="v1">SNMPv1</option>
+                        <option value="v2c">SNMPv2c</option>
+                        <option value="v3">SNMPv3</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Polling Interval (ms)</label>
+                    <input type="number" name="polling_interval" id="edit_polling_interval" value="5000" required
+                        min="100" step="100">
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" name="enabled" id="edit_enabled" checked style="width: auto;">
+                        <span>Enabled</span>
+                    </label>
+                </div>
+                
+                <!-- OID Management Section -->
+                <div style="margin-top: 25px; padding-top: 25px; border-top: 2px solid #f0f0f0;">
+                    <h3 style="margin: 0 0 15px 0; color: #333; font-size: 16px;">Configure OIDs</h3>
+                    
+                    <div class="discover-section">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                            <input type="text" id="editOidSearchFilter" placeholder="Search OIDs..." 
+                                   style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                                   oninput="filterEditOidList()">
+                            <button type="button" class="btn btn-secondary" style="padding: 8px 16px; white-space: nowrap;"
+                                    id="toggleEditSelectAllOids" onclick="toggleEditSelectAllOids()">
+                                <span id="editSelectAllOidsText">Select All</span>
+                            </button>
+                            <span class="selected-count" id="editOidSelectedCount" style="display: none;">0 selected</span>
+                        </div>
+                        
+                        <div id="editOidsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; background: #fff;">
+                            <p style="text-align:center;color:#666;padding:20px;">Loading OIDs...</p>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitEditForm()">Update Device</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let discoveredOIDs = [];
+    let selectedOIDs = new Set();
+
+    function showAddModal() {
+        document.getElementById('addModal').style.display = 'block';
+    }
+
+    function closeAddModal() {
+        document.getElementById('addModal').style.display = 'none';
+        discoveredOIDs = [];
+        selectedOIDs.clear();
+        document.getElementById('oidListContainer').style.display = 'none';
+        document.getElementById('oidSelectedCount').style.display = 'none';
+    }
+
+    function closeObjectsModal() {
+        document.getElementById('objectsModal').style.display = 'none';
+    }
+
+    function showEditModal(configId, name, host, port, hwid, community, version, pollingInterval) {
+        document.getElementById('edit_config_id').value = configId;
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_host').value = host;
+        document.getElementById('edit_port').value = port;
+        document.getElementById('edit_hwid').value = hwid || '';
+        document.getElementById('edit_community').value = community;
+        document.getElementById('edit_version').value = version;
+        document.getElementById('edit_polling_interval').value = pollingInterval;
+        document.getElementById('edit_enabled').checked = true;
+        document.getElementById('editModal').style.display = 'block';
+        loadDeviceOIDs(configId);
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    function submitEditForm() {
+        const form = document.getElementById('editForm');
+        const checkboxes = document.querySelectorAll('#editOidsList .oid-checkbox:checked');
+        const selectedOids = Array.from(checkboxes).map(cb => cb.value);
+        let input = form.querySelector('input[name="selected_oids"]');
+        if (!input) {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'selected_oids';
+            form.appendChild(input);
+        }
+        input.value = JSON.stringify(selectedOids);
+        console.log('Edit - selected OIDs:', selectedOids.length);
+        form.submit();
+    }
+
+    async function discoverOIDsForNewDevice() {
+        const host = document.getElementById('add_host').value;
+        const port = document.getElementById('add_port').value;
+        const community = document.getElementById('add_community').value;
+
+        if (!host) {
+            alert('Please enter a host/IP address first');
+            return;
+        }
+
+        const btn = document.getElementById('discoverBtn');
+        btn.disabled = true;
+        btn.textContent = 'Discovering...';
+
+        const oidListContainer = document.getElementById('oidListContainer');
+        const oidList = document.getElementById('oidList');
+
+        oidListContainer.style.display = 'block';
+        oidList.innerHTML = '<p style="text-align:center;padding:20px;color:#666">Discovering OIDs from device...</p>';
+
+        try {
+            const response = await fetch('/api/snmp/discover-objects-temp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host: host,
+                    port: parseInt(port),
+                    community: community,
+                    base_oid: '1.3.6.1.2.1'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.objects.length > 0) {
+                discoveredOIDs = data.objects;
+                // Select all by default
+                selectedOIDs.clear();
+                discoveredOIDs.forEach((oid, index) => {
+                    selectedOIDs.add(index);
+                });
+                renderOIDList();
+            } else {
+                oidList.innerHTML = '<div class="empty-state"><i class="material-icons">search_off</i><h3>No OIDs Found</h3><p>' + (data.message || 'No SNMP OIDs discovered from this device') + '</p></div>';
+            }
+        } catch (error) {
+            console.error('Discovery error:', error);
+            oidList.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error discovering OIDs: ' + error.message + '</p></div>';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Discover OIDs';
+        }
+    }
+
+    function renderOIDList() {
+        const oidList = document.getElementById('oidList');
+        const searchTerm = document.getElementById('oidSearchFilter')?.value.toLowerCase() || '';
+        let html = '';
+        let visibleCount = 0;
+
+        discoveredOIDs.forEach((oid, index) => {
+            // Filter by search term
+            const matchesSearch = !searchTerm ||
+                oid.name.toLowerCase().includes(searchTerm) ||
+                oid.oid.includes(searchTerm) ||
+                (oid.description && oid.description.toLowerCase().includes(searchTerm));
+
+            if (!matchesSearch) {
+                return; // Skip this OID
+            }
+
+            visibleCount++;
+            const isChecked = selectedOIDs.has(index) ? 'checked' : '';
+            html += `
+            <div class="oid-item" data-index="${index}" onclick="toggleOID(${index}, event)">
+                <input type="checkbox" ${isChecked} onclick="event.stopPropagation(); toggleOID(${index}, event)">
+                <div class="oid-details">
+                    <div class="oid-name">${oid.name}</div>
+                    <div class="oid-number">${oid.oid}</div>
+                    <div class="oid-meta">
+                        <span title="Data Type">📊 ${oid.data_type || 'Unknown'}</span>
+                        <span title="Access">${oid.access === 'read-only' ? '🔒' : '🔓'} ${oid.access || 'read-only'}</span>
+                        <span title="Status">✓ ${oid.status || 'current'}</span>
+                    </div>
+                    ${oid.description ? '<div class="oid-description">' + oid.description + '</div>' : ''}
+                </div>
+            </div>
+        `;
+        });
+
+        if (visibleCount === 0 && searchTerm) {
+            html = '<p style="text-align:center;padding:20px;color:#999">No OIDs match your search</p>';
+        }
+
+        oidList.innerHTML = html;
+        updateSelectedCount();
+    }
+
+    function toggleOID(index, event) {
+        if (selectedOIDs.has(index)) {
+            selectedOIDs.delete(index);
+        } else {
+            selectedOIDs.add(index);
+        }
+        renderOIDList();
+    }
+
+    function updateSelectedCount() {
+        const countEl = document.getElementById('oidSelectedCount');
+        countEl.textContent = selectedOIDs.size + ' selected';
+        countEl.style.display = selectedOIDs.size > 0 ? 'inline-block' : 'none';
+
+        // Update select all button text
+        const selectAllBtn = document.getElementById('selectAllText');
+        if (selectAllBtn) {
+            selectAllBtn.textContent = selectedOIDs.size === discoveredOIDs.length ? 'Deselect All' : 'Select All';
+        }
+    }
+
+    function filterOIDList() {
+        renderOIDList();
+    }
+
+    function toggleSelectAll() {
+        if (selectedOIDs.size === discoveredOIDs.length) {
+            // Deselect all
+            selectedOIDs.clear();
+        } else {
+            // Select all
+            selectedOIDs.clear();
+            discoveredOIDs.forEach((oid, index) => {
+                selectedOIDs.add(index);
+            });
+        }
+        renderOIDList();
+    }
+
+    function submitAddForm() {
+        // Collect selected OIDs
+        const selected = [];
+        selectedOIDs.forEach(index => {
+            selected.push(discoveredOIDs[index]);
+        });
+
+        document.getElementById('selected_oids').value = JSON.stringify(selected);
+        document.getElementById('addForm').submit();
+    }
+
+    // Edit form OID management functions
+    async function loadDeviceOIDs(configId) {
+        const list = document.getElementById('editOidsList');
+        list.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">Loading OIDs...</p>';
+        try {
+            const response = await fetch('/api/snmp/discover-objects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    config_id: configId,
+                    base_oid: '1.3.6.1.2.1'
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                displayEditOIDs(data.objects, data.existing_objects || []);
+            } else {
+                list.innerHTML = '<p style="text-align:center;color:#d32f2f;padding:20px;">Failed to load OIDs: ' + data.message + '</p>';
+            }
+        } catch (e) {
+            list.innerHTML = '<p style="text-align:center;color:#d32f2f;padding:20px;">Error: ' + e.message + '</p>';
+        }
+    }
+
+    function displayEditOIDs(allOids, existingOids) {
+        const list = document.getElementById('editOidsList');
+        list.innerHTML = '';
+        if (!allOids.length) {
+            list.innerHTML = '<p style="padding:12px;color:#666;text-align:center">No OIDs found</p>';
+            return;
+        }
+        const existingOidNumbers = new Set(existingOids.filter(o => o.enabled).map(o => o.oid));
+        allOids.forEach((oid, i) => {
+            const item = document.createElement('div');
+            item.className = 'oid-item';
+            item.setAttribute('data-oid-name', oid.name.toLowerCase());
+            item.setAttribute('data-oid-number', oid.oid);
+            const isChecked = existingOidNumbers.has(oid.oid);
+            item.innerHTML = '<input type="checkbox" class="oid-checkbox" id="edit_oid_' + i + '" value="' + oid.oid + '" ' + (isChecked ? 'checked' : '') + ' onchange="updateEditOidCount()"><div style="flex:1"><div style="font-weight:500;color:#333">' + oid.name + '</div><div style="font-family:monospace;color:#666;font-size:12px">' + oid.oid + '</div>' + (oid.description ? '<div style="color:#999;font-size:12px;margin-top:4px">' + oid.description + '</div>' : '') + '</div>';
+            list.appendChild(item);
+        });
+        updateEditOidCount();
+    }
+
+    function updateEditOidCount() {
+        const checked = document.querySelectorAll('#editOidsList .oid-checkbox:checked').length;
+        const total = document.querySelectorAll('#editOidsList .oid-checkbox').length;
+        const countElem = document.getElementById('editOidSelectedCount');
+        if (countElem) {
+            countElem.textContent = checked + ' selected';
+            countElem.style.display = total > 0 ? 'inline-block' : 'none';
+        }
+    }
+
+    function filterEditOidList() {
+        const searchValue = document.getElementById('editOidSearchFilter').value.toLowerCase();
+        const items = document.querySelectorAll('#editOidsList .oid-item');
+        items.forEach(item => {
+            const oidName = item.getAttribute('data-oid-name') || '';
+            const oidNumber = item.getAttribute('data-oid-number') || '';
+            if (oidName.includes(searchValue) || oidNumber.includes(searchValue)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    function toggleEditSelectAllOids() {
+        const checkboxes = Array.from(document.querySelectorAll('#editOidsList .oid-item')).filter(item => item.style.display !== 'none').map(item => item.querySelector('.oid-checkbox'));
+        const allChecked = checkboxes.every(cb => cb.checked);
+        checkboxes.forEach(cb => cb.checked = !allChecked);
+        document.getElementById('editSelectAllOidsText').textContent = allChecked ? 'Select All' : 'Deselect All';
+        updateEditOidCount();
+    }
+
+    async function discoverObjects(configId) {
+        console.log('Discovering OIDs for config_id:', configId);
+        const modal = document.getElementById('objectsModal');
+        const content = document.getElementById('objectsContent');
+
+        modal.style.display = 'block';
+        content.innerHTML = '<p style="text-align:center;color:#666"><i class="material-icons" style="font-size:48px;display:block;margin:20px auto">refresh</i>Discovering OIDs...</p>';
+
+        try {
+            const response = await fetch('/api/snmp/discover-objects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    config_id: configId,
+                    base_oid: '1.3.6.1.2.1'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.objects.length > 0) {
+                let html = '<table style="width:100%"><thead><tr><th>Name</th><th>OID</th><th>Type</th><th>Access</th><th>Status</th></tr></thead><tbody>';
+                data.objects.forEach(obj => {
+                    html += '<tr>';
+                    html += '<td><strong>' + obj.name + '</strong><br><small style="color:#666">' + (obj.description || '') + '</small></td>';
+                    html += '<td style="font-family:monospace;font-size:11px">' + obj.oid + '</td>';
+                    html += '<td><span style="background:#e3f2fd;padding:2px 8px;border-radius:3px;font-size:11px">' + (obj.data_type || 'Unknown') + '</span></td>';
+                    html += '<td>' + (obj.access || 'read-only') + '</td>';
+                    html += '<td>' + (obj.status || 'current') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="empty-state"><i class="material-icons">search_off</i><h3>No OIDs Found</h3><p>' + (data.message || 'No SNMP OIDs discovered from this device') + '</p></div>';
+            }
+        } catch (error) {
+            console.error('Discovery error:', error);
+            content.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error discovering OIDs: ' + error.message + '</p></div>';
+        }
+    }
+
+    async function updateConnectionStatus() {
+        document.querySelectorAll('[id^="status-"]').forEach(async el => {
+            const configId = el.id.replace('status-', '');
+            try {
+                const response = await fetch('/api/snmp/connection-status/' + configId);
+                const data = await response.json();
+                if (data.success) {
+                    el.textContent = data.connected ? 'Connected' : 'Disconnected';
+                    el.className = 'status-badge ' + (data.connected ? 'status-connected' : 'status-disconnected');
+                } else {
+                    el.textContent = 'Unknown';
+                }
+            } catch (error) {
+                el.textContent = 'Error';
+                el.className = 'status-badge status-disconnected';
+            }
+        });
+    }
+
+    window.onclick = function (event) {
+        const addModal = document.getElementById('addModal');
+        const objModal = document.getElementById('objectsModal');
+        const editModal = document.getElementById('editModal');
+        if (event.target == addModal) closeAddModal();
+        if (event.target == objModal) closeObjectsModal();
+        if (event.target == editModal) closeEditModal();
+    };
+
+    updateConnectionStatus();
+    setInterval(updateConnectionStatus, 10000);
+
+    // Initialize Select2 for device filter
+    $(document).ready(function () {
+        $('.select2-device-filter').select2({
+            placeholder: 'Search by device name or IP address...',
+            allowClear: true,
+            width: '100%'
+        });
+    });
+</script>
+{% endblock %}

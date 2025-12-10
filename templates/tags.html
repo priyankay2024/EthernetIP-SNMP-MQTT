@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}EthernetIP Tags{% endblock %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<style>
+    .select2-container--default .select2-selection--single {
+        height: 42px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 42px;
+        padding-left: 12px;
+        color: #495057;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 40px;
+    }
+    
+    .select2-container--default.select2-container--focus .select2-selection--single {
+        border-color: var(--primary-color);
+    }
+    
+    .select2-container {
+        width: 100% !important;
+    }
+    
+    .search-bar {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+        margin-bottom: 20px;
+        display: flex;
+        gap: 15px;
+        align-items: end;
+    }
+    
+    .search-group {
+        flex: 1;
+    }
+    
+    .search-group label {
+        display: block;
+        margin-bottom: 6px;
+        color: #555;
+        font-weight: 500;
+        font-size: 14px;
+    }
+    
+    .search-group input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .search-group input:focus,
+    .search-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    
+    .search-group input:focus,
+    .search-group select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+    
+    .btn-search {
+        padding: 10px 24px;
+        background: var(--primary-color);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .btn-search:hover {
+        background: #d63e0a;
+    }
+    
+    .table-wrapper {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+        overflow: hidden;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    thead {
+        background: #f8f9fa;
+    }
+    
+    th {
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 2px solid #dee2e6;
+        font-size: 13px;
+    }
+    
+    td {
+        padding: 15px;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 14px;
+    }
+    
+    tbody tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    
+    .status-enabled {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-disabled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6c757d;
+    }
+    
+    .empty-state i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: .5;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 25px;
+        gap: 10px;
+    }
+    
+    .pagination a,
+    .pagination span {
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #495057;
+        text-decoration: none;
+    }
+    
+    .pagination a:hover {
+        background: #f8f9fa;
+    }
+    
+    .pagination .active {
+        background: var(--primary-color);
+        color: #fff;
+        border-color: var(--primary-color);
+    }
+    
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    
+    .page-header h1 {
+        margin: 0;
+        color: #333;
+    }
+    
+    .tag-name {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .device-name {
+        color: #666;
+        font-size: 13px;
+    }
+    
+    .last-value {
+        font-family: 'Courier New', monospace;
+        background: #f5f5f5;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+    
+    .time-ago {
+        color: #888;
+        font-size: 12px;
+    }
+</style>
+
+<div class="page-header">
+    <h1>EthernetIP Tags</h1>
+    <!-- <a href="{{ url_for('main.config_ethernetip') }}" class="btn-search" style="background: #6c757d;">
+        <span class="material-icons" style="font-size: 18px;">settings</span>
+        Manage Devices
+    </a> -->
+</div>
+
+<div class="search-bar">
+    <div style="display: flex; gap: 15px; flex: 1; align-items: center;">
+        <div style="flex: 1;">
+            <input type="text" id="searchInput" placeholder="Search by device name, IP, or tag name..." 
+                   style="width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                   oninput="filterTable()">
+        </div>
+    </div>
+</div>
+
+<script>
+function filterTable() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+    });
+}
+</script>
+
+<div class="table-wrapper">
+    {% if tags %}
+    <table>
+        <thead>
+            <tr>
+                <th>Sr.No</th>
+                <th>Device</th>
+                <th>Tag Name</th>
+                <th>Data Type</th>
+                <th>Last Value</th>
+                <th>Last Read</th>
+                <!-- <th>Poll Rate</th> -->
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tag in tags %}
+            <tr>
+                <td>{{ (pagination.page - 1) * pagination.per_page + loop.index }}</td>
+                <td>
+                    <div class="device-name">{{ tag.config.name }}</div>
+                    <div style="font-size: 11px; color: #999;">{{ tag.config.ip_address }}</div>
+                </td>
+                <td>
+                    <div class="tag-name">{{ tag.tag_name }}</div>
+                    {% if tag.description %}
+                    <div style="font-size: 12px; color: #888;">{{ tag.description }}</div>
+                    {% endif %}
+                </td>
+                <td>{{ tag.data_type or 'N/A' }}</td>
+                <td>
+                    {% if tag.last_value %}
+                    <span class="last-value">{{ tag.last_value }}</span>
+                    {% else %}
+                    <span style="color: #999;">No data</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if tag.last_read %}
+                    {% set time_diff = ((now() - tag.last_read).total_seconds() | int) %}
+                    <div>{{ tag.last_read.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                    <div class="time-ago">{{ time_diff }} sec ago</div>
+                    {% else %}
+                    <span style="color: #999;">Never</span>
+                    {% endif %}
+                </td>
+                <!-- <td>{{ tag.poll_rate }}ms</td> -->
+                <td>
+                    <span class="status-badge {% if tag.enabled %}status-enabled{% else %}status-disabled{% endif %}">
+                        {% if tag.enabled %}Enabled{% else %}Disabled{% endif %}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <i class="material-icons">label_off</i>
+        <h3>No Tags Found</h3>
+        <p>{% if search_device or search_tag %}No tags match your search criteria{% else %}No tags have been configured yet{% endif %}</p>
+        <!-- <a href="{{ url_for('main.config_ethernetip') }}" class="btn-search" style="margin-top: 20px;">
+            <span class="material-icons" style="font-size: 18px;">add</span>
+            Add Device & Tags
+        </a> -->
+    </div>
+    {% endif %}
+</div>
+
+{% if pagination %}
+<div class="pagination">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('main.tags', page=pagination.prev_num, device=search_device, tag=search_tag) }}">Previous</a>
+    {% endif %}
+    <span class="active">Page {{ pagination.page }}</span>
+    <span>of {{ pagination.pages }} ({{ pagination.total }} tags)</span>
+    {% if pagination.has_next %}
+    <a href="{{ url_for('main.tags', page=pagination.next_num, device=search_device, tag=search_tag) }}">Next</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+$(document).ready(function() {
+    // Initialize Select2 on dropdowns for searchability
+    $('select[name="device"]').select2({
+        placeholder: 'All Devices',
+        allowClear: true,
+        theme: 'default'
+    });
+    
+    $('select[name="tag"]').select2({
+        placeholder: 'All Tags',
+        allowClear: true,
+        theme: 'default'
+    });
+});
+</script>
+
+{% endblock %}
+

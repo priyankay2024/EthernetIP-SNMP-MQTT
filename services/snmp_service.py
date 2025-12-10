@@ -1,0 +1,331 @@
+import logging
+from datetime import datetime
+import threading
+
+logger = logging.getLogger(__name__)
+
+class SNMPService:
+    def __init__(self):
+        self._connection_status = {}  # Dict to store status per device ID
+        self._lock = threading.Lock()
+    
+    def get_connection_status(self, device_id=None):
+        """Get connection status for specific device or all devices"""
+        with self._lock:
+            if device_id:
+                return self._connection_status.get(device_id, {
+                    'connected': False,
+                    'last_check': None,
+                    'message': 'Not connected'
+                })
+            return self._connection_status
+    
+    def connect_device(self, config):
+        """Establish connection to SNMP device"""
+        try:
+            from pysnmp.hlapi.v3arch.asyncio import (
+                SnmpEngine, CommunityData, 
+                UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
+                get_cmd
+            )
+            import asyncio
+            
+            async def test_connection():
+                try:
+                    iterator = get_cmd(
+                        SnmpEngine(),
+                        CommunityData(config.community),
+                        await UdpTransportTarget.create((config.host, config.port), timeout=2, retries=1),
+                        ContextData(),
+                        ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))
+                    )
+                    
+                    errorIndication, errorStatus, errorIndex, varBinds = await iterator
+                    return errorIndication, errorStatus, errorIndex, varBinds
+                except asyncio.TimeoutError:
+                    return "Request timeout", None, None, None
+            
+            # Run async operation with proper cleanup
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                errorIndication, errorStatus, errorIndex, varBinds = loop.run_until_complete(
+                    asyncio.wait_for(test_connection(), timeout=5)
+                )
+            except asyncio.TimeoutError:
+                errorIndication = "Connection timeout"
+                errorStatus = None
+            finally:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                # Run loop once more to allow tasks to be cancelled
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+            
+            if errorIndication:
+                with self._lock:
+                    self._connection_status[config.id] = {
+                        'connected': False,
+                        'last_check': datetime.utcnow(),
+                        'message': str(errorIndication)
+                    }
+                logger.debug(f"SNMP connection failed for {config.name}: {errorIndication}")
+                return False, str(errorIndication)
+            elif errorStatus:
+                with self._lock:
+                    self._connection_status[config.id] = {
+                        'connected': False,
+                        'last_check': datetime.utcnow(),
+                        'message': f'{errorStatus.prettyPrint()} at {errorIndex}'
+                    }
+                return False, f'{errorStatus.prettyPrint()} at {errorIndex}'
+            else:
+                with self._lock:
+                    self._connection_status[config.id] = {
+                        'connected': True,
+                        'last_check': datetime.utcnow(),
+                        'message': f'Connected to {config.host}'
+                    }
+                logger.info(f"Connected to SNMP device {config.name} at {config.host}")
+                return True, "Connected successfully"
+        except Exception as e:
+            logger.error(f"SNMP connection failed: {str(e)}")
+            with self._lock:
+                self._connection_status[config.id] = {
+                    'connected': False,
+                    'last_check': datetime.utcnow(),
+                    'message': str(e)
+                }
+            return False, str(e)
+    
+    def discover_objects(self, config, base_oid='1.3.6.1.2.1'):
+        """Discover SNMP objects by walking the MIB tree"""
+        logger.info(f"Starting SNMP walk for {config.host} with base OID {base_oid}")
+        try:
+            from pysnmp.hlapi.v3arch.asyncio import (
+                SnmpEngine, CommunityData,
+                UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
+                next_cmd
+            )
+            import asyncio
+            
+            objects = []
+            
+            async def walk_mib():
+                nonlocal objects
+                count = 0
+                max_objects = 100  # Limit to prevent overwhelming
+                
+                logger.info(f"Creating SNMP connection to {config.host}:{config.port}")
+                
+                # Create transport target once
+                transport = await UdpTransportTarget.create((config.host, config.port), timeout=5, retries=2)
+                snmpEngine = SnmpEngine()
+                community = CommunityData(config.community)
+                context = ContextData()
+                
+                # Start with the base OID
+                current_oid = ObjectType(ObjectIdentity(base_oid))
+                
+                try:
+                    while count < max_objects:
+                        # Use next_cmd with await (not async for)
+                        errorIndication, errorStatus, errorIndex, varBinds = await next_cmd(
+                            snmpEngine,
+                            community,
+                            transport,
+                            context,
+                            current_oid,
+                            lexicographicMode=False
+                        )
+                        
+                        if errorIndication:
+                            logger.error(f"SNMP error indication: {errorIndication}")
+                            break
+                        
+                        if errorStatus:
+                            logger.error(f"SNMP error status: {errorStatus.prettyPrint()}")
+                            break
+                            
+                        for varBind in varBinds:
+                            oid_obj = varBind[0]
+                            value_obj = varBind[1]
+                            
+                            oid = str(oid_obj)
+                            value = str(value_obj)
+                            
+                            # Check if we've moved beyond the base OID tree
+                            if not oid.startswith(base_oid):
+                                logger.info(f"Reached end of OID tree at {oid}")
+                                return
+                            
+                            # Extract MIB metadata from ObjectIdentity
+                            try:
+                                # Get the label (human-readable name)
+                                if hasattr(oid_obj, 'prettyPrint'):
+                                    pretty_name = oid_obj.prettyPrint()
+                                else:
+                                    pretty_name = str(oid_obj)
+                                
+                                # Extract MIB name from the label if available
+                                name = pretty_name.split('::')[-1].split('.')[0] if '::' in pretty_name else f"OID_{oid.split('.')[-1]}"
+                                
+                                # Get data type from the value object
+                                data_type = type(value_obj).__name__
+                                if hasattr(value_obj, 'prettyPrint'):
+                                    data_type = value_obj.__class__.__name__
+                                
+                                # Extract description if available from MIB
+                                description = f"SNMP OID: {oid}"
+                                
+                                # Infer access type (read-only by default for walk)
+                                access = "read-only"
+                                
+                                # Status is typically 'current' for discovered objects
+                                status = "current"
+                                
+                            except Exception as e:
+                                logger.debug(f"Could not extract full metadata for {oid}: {e}")
+                                name = f"OID_{oid.split('.')[-1]}"
+                                data_type = "UNKNOWN"
+                                description = f"SNMP OID: {oid}"
+                                access = "read-only"
+                                status = "current"
+                            
+                            objects.append({
+                                'oid': oid,
+                                'name': name,
+                                'value': value[:50] if len(value) > 50 else value,
+                                'data_type': data_type,
+                                'description': description,
+                                'access': access,
+                                'status': status
+                            })
+                            
+                            # Update current OID for next iteration
+                            current_oid = ObjectType(ObjectIdentity(oid))
+                            
+                            count += 1
+                            if count >= max_objects:
+                                logger.info(f"Reached max objects limit ({max_objects})")
+                                return
+                
+                except asyncio.TimeoutError:
+                    logger.warning(f"SNMP walk timeout for {config.host}")
+                except Exception as e:
+                    logger.error(f"Error during SNMP walk: {str(e)}", exc_info=True)
+            
+            # Run async operation with proper cleanup
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                logger.info("Running SNMP walk async operation...")
+                loop.run_until_complete(asyncio.wait_for(walk_mib(), timeout=15))
+            except asyncio.TimeoutError:
+                logger.warning(f"SNMP walk timed out after 15 seconds for {config.host}")
+            finally:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+            
+            logger.info(f"✓ Discovered {len(objects)} OIDs from {config.host}")
+            return objects
+        except Exception as e:
+            logger.error(f"SNMP OID discovery failed: {str(e)}", exc_info=True)
+            return []
+    
+    def read_oid(self, snmp_object):
+        try:
+            from pysnmp.hlapi.v3arch.asyncio import (
+                SnmpEngine, CommunityData, 
+                UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
+                get_cmd
+            )
+            import asyncio
+            
+            config = snmp_object.config
+            
+            async def read_value():
+                try:
+                    iterator = get_cmd(
+                        SnmpEngine(),
+                        CommunityData(config.community),
+                        await UdpTransportTarget.create((config.host, config.port), timeout=2, retries=1),
+                        ContextData(),
+                        ObjectType(ObjectIdentity(snmp_object.oid))
+                    )
+                    
+                    errorIndication, errorStatus, errorIndex, varBinds = await iterator
+                    return errorIndication, errorStatus, errorIndex, varBinds
+                except asyncio.TimeoutError:
+                    return "Request timeout", None, None, None
+            
+            # Run async operation with proper cleanup
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                errorIndication, errorStatus, errorIndex, varBinds = loop.run_until_complete(
+                    asyncio.wait_for(read_value(), timeout=5)
+                )
+            except asyncio.TimeoutError:
+                errorIndication = "Read timeout"
+                errorStatus = None
+            finally:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+            
+            if errorIndication:
+                return False, str(errorIndication)
+            elif errorStatus:
+                return False, f'{errorStatus.prettyPrint()} at {errorIndex}'
+            else:
+                for varBind in varBinds:
+                    return True, varBind[1].prettyPrint()
+                return False, "No value returned"
+                
+        except Exception as e:
+            logger.error(f"OID read failed: {str(e)}")
+            return False, str(e)
+    
+    def walk_oid(self, config, oid):
+        try:
+            from pysnmp.hlapi import (
+                nextCmd, SnmpEngine, CommunityData, 
+                UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
+            )
+            
+            results = []
+            
+            for (errorIndication, errorStatus, errorIndex, varBinds) in nextCmd(
+                SnmpEngine(),
+                CommunityData(config.community),
+                UdpTransportTarget((config.host, config.port), timeout=2, retries=1),
+                ContextData(),
+                ObjectType(ObjectIdentity(oid)),
+                lexicographicMode=False
+            ):
+                if errorIndication:
+                    return False, str(errorIndication)
+                elif errorStatus:
+                    return False, f'{errorStatus.prettyPrint()} at {errorIndex}'
+                else:
+                    for varBind in varBinds:
+                        results.append({
+                            'oid': varBind[0].prettyPrint(),
+                            'value': varBind[1].prettyPrint()
+                        })
+            
+            return True, results
+                
+        except Exception as e:
+            logger.error(f"SNMP walk failed: {str(e)}")
+            return False, str(e)

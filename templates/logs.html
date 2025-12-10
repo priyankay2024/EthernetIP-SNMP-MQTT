@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Data Logs - Bridge Manager{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Data Logs</h1>
+    <p class="page-subtitle">Historical record of all polled values from devices</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Recent Data Logs</h2>
+    </div>
+    {% if logs %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Source Type</th>
+                    <th>Source Name</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td class="monospace">{{ log.timestamp }}</td>
+                    <td>
+                        {% if log.source_type == 'ethernetip' %}
+                        <span class="badge badge-success">EthernetIP</span>
+                        {% else %}
+                        <span class="badge badge-warning">SNMP</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ log.source_name }}</td>
+                    <td class="monospace">{{ log.value or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <span class="material-icons">history</span>
+        <p>No data logs recorded yet</p>
+        <p>Data will appear here when tags and objects are polled</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h2 class="card-title">Trend Visualization</h2>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Source Type</label>
+                <select id="chart_source_type" class="form-control" onchange="loadChartData()">
+                    <option value="ethernetip">EthernetIP Tag</option>
+                    <option value="snmp">SNMP Object</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Source ID</label>
+                <input type="number" id="chart_source_id" class="form-control" value="1" min="1" onchange="loadChartData()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Time Range (hours)</label>
+                <select id="chart_hours" class="form-control" onchange="loadChartData()">
+                    <option value="1">1 Hour</option>
+                    <option value="6">6 Hours</option>
+                    <option value="24" selected>24 Hours</option>
+                    <option value="48">48 Hours</option>
+                    <option value="168">1 Week</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-top: 20px;">
+            <canvas id="trendChart" height="100"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+var chart = null;
+
+function loadChartData() {
+    var sourceType = document.getElementById('chart_source_type').value;
+    var sourceId = document.getElementById('chart_source_id').value;
+    var hours = document.getElementById('chart_hours').value;
+    
+    fetch('/api/chart-data/' + sourceType + '/' + sourceId + '?hours=' + hours)
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            updateChart(data);
+        });
+}
+
+function updateChart(data) {
+    var ctx = document.getElementById('trendChart').getContext('2d');
+    
+    if (chart) {
+        chart.destroy();
+    }
+    
+    var labels = data.labels.map(function(ts) {
+        return new Date(ts).toLocaleString();
+    });
+    
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Value',
+                data: data.values,
+                borderColor: '#1976d2',
+                backgroundColor: 'rgba(25, 118, 210, 0.1)',
+                fill: true,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Value'
+                    }
+                }
+            }
+        }
+    });
+}
+
+loadChartData();
+</script>
+{% endblock %}
+

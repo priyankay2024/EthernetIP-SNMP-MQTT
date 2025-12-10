@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}EthernetIP & SNMP-MQTT Bridge{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="{{ url_for('static', filename='images/tor-cygnus-logo.png') }}" alt="Cygnus" style="max-width: 100%; height: auto;">
+                <p class="app-subtitle">EthernetIP and SNMP to MQTT Bridge</p>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="{{ url_for('main.dashboard') }}" class="nav-item {% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+                    <span class="material-icons">dashboard</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <div class="nav-group">
+                    <div class="nav-group-header">
+                        <span class="material-icons">settings</span>
+                        <span class="nav-label">Configuration</span>
+                        <span class="material-icons expand-icon">expand_more</span>
+                    </div>
+                    <div class="nav-group-items">
+                        <a href="{{ url_for('main.config_ethernetip') }}" class="nav-item sub-item {% if request.endpoint == 'main.config_ethernetip' %}active{% endif %}">
+                            <span class="nav-label">EthernetIP</span>
+                        </a>
+                        <a href="{{ url_for('main.config_snmp') }}" class="nav-item sub-item {% if request.endpoint == 'main.config_snmp' %}active{% endif %}">
+                            <span class="nav-label">SNMP</span>
+                        </a>
+                        <a href="{{ url_for('main.config_mqtt') }}" class="nav-item sub-item {% if request.endpoint == 'main.config_mqtt' %}active{% endif %}">
+                            <span class="nav-label">MQTT</span>
+                        </a>
+                    </div>
+                </div>
+                <a href="{{ url_for('main.tags') }}" class="nav-item {% if request.endpoint == 'main.tags' %}active{% endif %}">
+                    <span class="material-icons">device_hub</span>
+                    <span class="nav-label">EthernetIP Tags</span>
+                </a>
+                <a href="{{ url_for('main.objects') }}" class="nav-item {% if request.endpoint == 'main.objects' %}active{% endif %}">
+                    <span class="material-icons">dns</span>
+                    <span class="nav-label">SNMP Objects</span>
+                </a>
+                <!-- <a href="{{ url_for('main.logs') }}" class="nav-item {% if request.endpoint == 'main.logs' %}active{% endif %}">
+                    <span class="material-icons">history</span>
+                    <span class="nav-label">Data Logs</span>
+                </a> -->
+            </nav>
+        </aside>
+        
+        <button class="sidebar-toggle" id="sidebarToggle">
+            <span class="material-icons">menu</span>
+        </button>
+        
+        <main class="main-content">
+            <div class="content-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" data-auto-dismiss="true">
+                                <span class="material-icons">
+                                    {% if category == 'success' %}check_circle{% elif category == 'error' %}error{% else %}info{% endif %}
+                                </span>
+                                <span>{{ message }}</span>
+                                <button class="alert-close" onclick="this.parentElement.remove()">
+                                    <span class="material-icons">close</span>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auto-dismiss flash messages after 5 seconds
+            const alerts = document.querySelectorAll('.alert[data-auto-dismiss="true"]');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    alert.style.opacity = '0';
+                    alert.style.transform = 'translateY(-20px)';
+                    setTimeout(function() {
+                        alert.remove();
+                    }, 300);
+                }, 5000);
+            });
+            
+            // Sidebar toggle
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    document.getElementById('sidebar').classList.toggle('open');
+                });
+            }
+            
+            // Nav group expand/collapse
+            document.querySelectorAll('.nav-group-header').forEach(function(header) {
+                header.addEventListener('click', function() {
+                    this.parentElement.classList.toggle('expanded');
+                });
+            });
+            
+            // Auto-expand nav group if it contains the active page
+            const activeNavItem = document.querySelector('.nav-group .nav-item.active');
+            if (activeNavItem) {
+                activeNavItem.closest('.nav-group').classList.add('expanded');
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+
