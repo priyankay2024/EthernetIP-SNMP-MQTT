@@ -797,7 +797,7 @@ function filterTable() {
         discoveredOIDs.forEach((oid, index) => {
             // Filter by search term
             const matchesSearch = !searchTerm ||
-                oid.name.toLowerCase().includes(searchTerm) ||
+                (oid.name && oid.name.toLowerCase().includes(searchTerm)) ||
                 oid.oid.includes(searchTerm) ||
                 (oid.description && oid.description.toLowerCase().includes(searchTerm));
 
@@ -917,7 +917,7 @@ function filterTable() {
         allOids.forEach((oid, i) => {
             const item = document.createElement('div');
             item.className = 'oid-item';
-            item.setAttribute('data-oid-name', oid.name.toLowerCase());
+            item.setAttribute('data-oid-name', (oid.name || '').toLowerCase());
             item.setAttribute('data-oid-number', oid.oid);
             const isChecked = existingOidNumbers.has(oid.oid);
             item.innerHTML = '<input type="checkbox" class="oid-checkbox" id="edit_oid_' + i + '" value="' + oid.oid + '" ' + (isChecked ? 'checked' : '') + ' onchange="updateEditOidCount()"><div style="flex:1"><div style="font-weight:500;color:#333">' + oid.name + '</div><div style="font-family:monospace;color:#666;font-size:12px">' + oid.oid + '</div>' + (oid.description ? '<div style="color:#999;font-size:12px;margin-top:4px">' + oid.description + '</div>' : '') + '</div>';

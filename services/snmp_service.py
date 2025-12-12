@@ -234,10 +234,10 @@ class SNMPService:
                 loop.close()
             
             logger.info(f"✓ Discovered {len(objects)} OIDs from {config.host}")
-            return objects
+            return True, objects
         except Exception as e:
             logger.error(f"SNMP OID discovery failed: {str(e)}", exc_info=True)
-            return []
+            return False, []
     
     def read_oid(self, snmp_object):
         try:

@@ -674,7 +674,7 @@ def snmp_discover_objects():
             return jsonify({'success': False, 'message': 'SNMP service not available'}), 503
         
         logger.info(f"Starting OID discovery for {config.name} ({config.host})")
-        objects = snmp_service.discover_objects(config, base_oid)
+        success, objects = snmp_service.discover_objects(config, base_oid)
         logger.info(f"Discovery completed: {len(objects)} OIDs found")
         
         response_data = {
@@ -732,7 +732,7 @@ def snmp_discover_objects_temp():
             return jsonify({'success': False, 'message': 'SNMP service not available'}), 503
         
         logger.info(f"Starting OID discovery for temp device ({host})")
-        objects = snmp_service.discover_objects(temp_config, base_oid)
+        success, objects = snmp_service.discover_objects(temp_config, base_oid)
         logger.info(f"Discovery completed: {len(objects)} OIDs found")
         
         return jsonify({
