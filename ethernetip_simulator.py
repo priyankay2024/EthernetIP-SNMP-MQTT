@@ -191,11 +191,51 @@ class MockEthernetIPClient:
     # Class-level mock PLC instances (simulates multiple PLCs)
     _plc_instances = {}
     
+    # Configuration for device detection testing
+    _active_ips = set()  # Set of IPs that should respond to detection
+    _detection_enabled = False  # Whether detection is enabled
+    
     def __init__(self):
         self.IPAddress = None
         self.ProcessorSlot = 0
         self.SocketTimeout = 5.0
         self._plc = None
+    
+    @classmethod
+    def enable_detection(cls, enabled=True):
+        """Enable/disable device detection"""
+        cls._detection_enabled = enabled
+        logger.info(f"Device detection {'enabled' if enabled else 'disabled'}")
+    
+    @classmethod
+    def add_active_ip(cls, ip_address):
+        """Add an IP that should respond to detection"""
+        cls._active_ips.add(ip_address)
+        logger.info(f"Added active IP: {ip_address}")
+    
+    @classmethod
+    def add_active_ips(cls, ip_addresses):
+        """Add multiple IPs that should respond to detection"""
+        for ip in ip_addresses:
+            cls._active_ips.add(ip)
+        logger.info(f"Added {len(ip_addresses)} active IPs: {ip_addresses}")
+    
+    @classmethod
+    def remove_active_ip(cls, ip_address):
+        """Remove an IP from active list"""
+        cls._active_ips.discard(ip_address)
+        logger.info(f"Removed active IP: {ip_address}")
+    
+    @classmethod
+    def clear_active_ips(cls):
+        """Clear all active IPs"""
+        cls._active_ips.clear()
+        logger.info("Cleared all active IPs")
+    
+    @classmethod
+    def get_active_ips(cls):
+        """Get list of active IPs"""
+        return list(cls._active_ips)
     
     def __enter__(self):
         """Context manager entry"""
@@ -223,6 +263,12 @@ class MockEthernetIPClient:
     def GetPLCTime(self):
         """Get PLC time - mimics pylogix method"""
         try:
+            # Check if detection is enabled and this IP is not in active list
+            if MockEthernetIPClient._detection_enabled:
+                if self.IPAddress not in MockEthernetIPClient._active_ips:
+                    logger.debug(f"IP {self.IPAddress} not in active list, returning error")
+                    return MockResponse('Error', None)
+            
             plc = self._get_or_create_plc()
             return plc.get_plc_time()
         except Exception as e:

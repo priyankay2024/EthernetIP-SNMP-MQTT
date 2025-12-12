@@ -371,6 +371,104 @@ def get_ethernetip_status(config_id):
     return jsonify({'success': False, 'connected': False, 'message': 'Service not available'})
 
 
+@main_bp.route('/api/ethernetip/detect-devices', methods=['POST'])
+def detect_ethernetip_devices():
+    """API endpoint to detect EthernetIP devices in a network"""
+    try:
+        data = request.get_json()
+        ip_range = data.get('ip_range')
+        port = int(data.get('port', 2222))
+        timeout = float(data.get('timeout', 5.0))
+        
+        if not ip_range:
+            return jsonify({'success': False, 'message': 'IP range required'}), 400
+        
+        eip_service, _, _, _, _ = get_services()
+        if not eip_service:
+            return jsonify({'success': False, 'message': 'EthernetIP service not available'}), 500
+        
+        success, result = eip_service.detect_devices(ip_range, port, timeout)
+        
+        if success:
+            return jsonify({'success': True, 'devices': result})
+        else:
+            return jsonify({'success': False, 'message': result}), 400
+            
+    except Exception as e:
+        logger.error(f"Device detection error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@main_bp.route('/api/ethernetip/add-detected-devices', methods=['POST'])
+def add_detected_ethernetip_devices():
+    """API endpoint to add multiple detected EthernetIP devices"""
+    try:
+        data = request.get_json()
+        devices = data.get('devices', [])
+        
+        if not devices:
+            return jsonify({'success': False, 'message': 'No devices provided'}), 400
+        
+        eip_service, _, _, _, _ = get_services()
+        added_count = 0
+        
+        for device_info in devices:
+            try:
+                # Check if device already exists
+                existing = EthernetIPConfig.query.filter_by(
+                    ip_address=device_info['ip_address']
+                ).first()
+                
+                if existing:
+                    logger.info(f"Device {device_info['ip_address']} already exists")
+                    continue
+                
+                # Create new device
+                config = EthernetIPConfig(
+                    name=f"EIP-{device_info['ip_address']}",
+                    ip_address=device_info['ip_address'],
+                    slot=device_info.get('slot', 0),
+                    timeout=device_info.get('timeout', 5.0),
+                    polling_interval=device_info.get('polling_interval', 1000),
+                    enabled=True
+                )
+                
+                db.session.add(config)
+                db.session.flush()  # Get the ID
+                
+                # Discover and add tags
+                if eip_service:
+                    success, tags = eip_service.discover_tags(config)
+                    if success:
+                        for tag in tags:
+                            tag_obj = EthernetIPTag(
+                                config_id=config.id,
+                                tag_name=tag['name'],
+                                data_type=tag['data_type'],
+                                enabled=True
+                            )
+                            db.session.add(tag_obj)
+                
+                db.session.commit()
+                added_count += 1
+                logger.info(f"Added EthernetIP device: {config.name}")
+                
+            except Exception as e:
+                logger.error(f"Failed to add device {device_info.get('ip_address')}: {str(e)}")
+                db.session.rollback()
+                continue
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully added {added_count} device(s)',
+            'count': added_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Add detected devices error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @main_bp.route('/api/ethernetip/device-tags/<int:config_id>')
 def get_device_tags(config_id):
     """API endpoint to get saved tags for a device"""
@@ -668,6 +766,112 @@ def snmp_connection_status(config_id):
         'message': 'SNMP service not available'
     }), 503
 
+
+@main_bp.route('/api/snmp/detect-devices', methods=['POST'])
+def detect_snmp_devices():
+    """API endpoint to detect SNMP devices in a network"""
+    try:
+        data = request.get_json()
+        ip_range = data.get('ip_range')
+        port = int(data.get('port', 161))
+        community = data.get('community', 'public')
+        version = data.get('version', 'v2c')
+        timeout = float(data.get('timeout', 3))
+        
+        if not ip_range:
+            return jsonify({'success': False, 'message': 'IP range required'}), 400
+        
+        _, snmp_service, _, _, _ = get_services()
+        if not snmp_service:
+            return jsonify({'success': False, 'message': 'SNMP service not available'}), 500
+        
+        success, result = snmp_service.detect_devices(ip_range, port, community, version, timeout)
+        
+        if success:
+            return jsonify({'success': True, 'devices': result})
+        else:
+            return jsonify({'success': False, 'message': result}), 400
+            
+    except Exception as e:
+        logger.error(f"SNMP device detection error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@main_bp.route('/api/snmp/add-detected-devices', methods=['POST'])
+def add_detected_snmp_devices():
+    """API endpoint to add multiple detected SNMP devices"""
+    try:
+        data = request.get_json()
+        devices = data.get('devices', [])
+        
+        if not devices:
+            return jsonify({'success': False, 'message': 'No devices provided'}), 400
+        
+        _, snmp_service, _, _, _ = get_services()
+        added_count = 0
+        
+        for device_info in devices:
+            try:
+                # Check if device already exists
+                existing = SNMPConfig.query.filter_by(
+                    host=device_info['host'],
+                    port=device_info['port']
+                ).first()
+                
+                if existing:
+                    logger.info(f"Device {device_info['host']}:{device_info['port']} already exists")
+                    continue
+                
+                # Create new device
+                config = SNMPConfig(
+                    name=f"SNMP-{device_info['host']}",
+                    host=device_info['host'],
+                    port=device_info['port'],
+                    community=device_info.get('community', 'public'),
+                    version=device_info.get('version', 'v2c'),
+                    polling_interval=device_info.get('polling_interval', 5000),
+                    enabled=True
+                )
+                
+                db.session.add(config)
+                db.session.flush()  # Get the ID
+                
+                # Discover and add OIDs
+                if snmp_service:
+                    success, objects = snmp_service.discover_objects(config, '1.3.6.1.2.1')
+                    if success:
+                        for obj in objects[:20]:  # Limit to first 20 OIDs
+                            snmp_obj = SNMPObject(
+                                config_id=config.id,
+                                oid=obj['oid'],
+                                name=obj.get('name', 'Unknown'),
+                                data_type=obj.get('data_type', 'Unknown'),
+                                access=obj.get('access', 'read-only'),
+                                status=obj.get('status', 'current'),
+                                enabled=True
+                            )
+                            db.session.add(snmp_obj)
+                
+                db.session.commit()
+                added_count += 1
+                logger.info(f"Added SNMP device: {config.name}")
+                
+            except Exception as e:
+                logger.error(f"Failed to add SNMP device {device_info.get('host')}: {str(e)}")
+                db.session.rollback()
+                continue
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully added {added_count} device(s)',
+            'count': added_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Add detected SNMP devices error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @main_bp.route('/config/mqtt', methods=['GET', 'POST'])
 def config_mqtt():
     if request.method == 'POST':
@@ -923,3 +1127,91 @@ def api_recent_logs():
     limit = request.args.get('limit', 50, type=int)
     logs = data_log_service.get_recent_logs(limit=limit) if data_log_service else []
     return jsonify(logs)
+
+# ============================================================================
+# TESTING HELPER ENDPOINTS - Device Detection Simulator Configuration
+# ============================================================================
+
+@main_bp.route('/api/test/ethernetip/enable-detection', methods=['POST'])
+def test_enable_ethernetip_detection():
+    """Enable device detection mode for testing"""
+    try:
+        from ethernetip_simulator import MockEthernetIPClient
+        
+        enabled = request.get_json().get('enabled', True)
+        MockEthernetIPClient.enable_detection(enabled)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Detection mode {"enabled" if enabled else "disabled"}',
+            'enabled': enabled
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@main_bp.route('/api/test/ethernetip/set-active-ips', methods=['POST'])
+def test_set_ethernetip_active_ips():
+    """Set which IPs should respond to detection"""
+    try:
+        from ethernetip_simulator import MockEthernetIPClient
+        
+        data = request.get_json()
+        action = data.get('action', 'set')  # 'set', 'add', 'remove', 'clear'
+        ips = data.get('ips', [])
+        
+        if action == 'set':
+            MockEthernetIPClient.clear_active_ips()
+            MockEthernetIPClient.add_active_ips(ips)
+            message = f'Set active IPs: {ips}'
+        elif action == 'add':
+            MockEthernetIPClient.add_active_ips(ips)
+            message = f'Added active IPs: {ips}'
+        elif action == 'remove':
+            for ip in ips:
+                MockEthernetIPClient.remove_active_ip(ip)
+            message = f'Removed IPs: {ips}'
+        elif action == 'clear':
+            MockEthernetIPClient.clear_active_ips()
+            message = 'Cleared all active IPs'
+        else:
+            return jsonify({'success': False, 'message': 'Invalid action'}), 400
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'active_ips': MockEthernetIPClient.get_active_ips()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@main_bp.route('/api/test/ethernetip/get-active-ips', methods=['GET'])
+def test_get_ethernetip_active_ips():
+    """Get list of active IPs"""
+    try:
+        from ethernetip_simulator import MockEthernetIPClient
+        
+        return jsonify({
+            'success': True,
+            'active_ips': MockEthernetIPClient.get_active_ips(),
+            'detection_enabled': MockEthernetIPClient._detection_enabled
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@main_bp.route('/test/ethernetip/config')
+def test_ethernetip_config():
+    """Testing page for EthernetIP device detection"""
+    try:
+        from ethernetip_simulator import MockEthernetIPClient
+        active_ips = MockEthernetIPClient.get_active_ips()
+        detection_enabled = MockEthernetIPClient._detection_enabled
+    except:
+        active_ips = []
+        detection_enabled = False
+    
+    return render_template('test_ethernetip_detection.html',
+                         active_ips=active_ips,
+                         detection_enabled=detection_enabled)

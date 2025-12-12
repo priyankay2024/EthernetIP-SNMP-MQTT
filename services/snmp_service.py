@@ -329,3 +329,94 @@ class SNMPService:
         except Exception as e:
             logger.error(f"SNMP walk failed: {str(e)}")
             return False, str(e)
+    
+    def detect_devices(self, ip_range, port=161, community='public', version='v2c', timeout=3):
+        """Detect SNMP devices in a given IP range"""
+        import ipaddress
+        import threading
+        import asyncio
+        from pysnmp.hlapi.v3arch.asyncio import (
+            SnmpEngine, CommunityData,
+            UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
+            get_cmd
+        )
+        
+        try:
+            network = ipaddress.ip_network(ip_range, strict=False)
+            devices = []
+            lock = threading.Lock()
+            
+            def check_device(ip):
+                try:
+                    async def test_snmp():
+                        try:
+                            iterator = get_cmd(
+                                SnmpEngine(),
+                                CommunityData(community),
+                                await UdpTransportTarget.create((str(ip), port), timeout=timeout, retries=1),
+                                ContextData(),
+                                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))
+                            )
+                            
+                            errorIndication, errorStatus, errorIndex, varBinds = await iterator
+                            return errorIndication, errorStatus, errorIndex, varBinds
+                        except:
+                            return "error", None, None, None
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        errorIndication, errorStatus, errorIndex, varBinds = loop.run_until_complete(
+                            asyncio.wait_for(test_snmp(), timeout=timeout + 1)
+                        )
+                    except asyncio.TimeoutError:
+                        errorIndication = "Timeout"
+                        errorStatus = None
+                    finally:
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                        loop.close()
+                    
+                    if not errorIndication and not errorStatus:
+                        with lock:
+                            devices.append({
+                                'host': str(ip),
+                                'port': port,
+                                'community': community,
+                                'version': version,
+                                'polling_interval': 5000
+                            })
+                        logger.info(f"Found SNMP device at {ip}")
+                except:
+                    pass
+            
+            # Create threads to check each IP
+            threads = []
+            batch_size = 10  # Check 10 IPs in parallel
+            
+            for ip in list(network.hosts()):
+                thread = threading.Thread(target=check_device, args=(ip,), daemon=True)
+                thread.start()
+                threads.append(thread)
+                
+                # Limit concurrent threads
+                if len(threads) >= batch_size:
+                    for t in threads:
+                        t.join(timeout=timeout + 2)
+                    threads = [t for t in threads if t.is_alive()]
+            
+            # Wait for remaining threads
+            for thread in threads:
+                thread.join(timeout=timeout + 2)
+            
+            logger.info(f"SNMP device detection completed. Found {len(devices)} devices")
+            return True, devices
+            
+        except ValueError as e:
+            logger.error(f"Invalid IP range: {str(e)}")
+            return False, f"Invalid IP range: {str(e)}"
+        except Exception as e:
+            logger.error(f"Device detection failed: {str(e)}")
+            return False, str(e)

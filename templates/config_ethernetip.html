@@ -344,7 +344,11 @@
     }
 </style>
 <div class="actions-header">
-    <h1>EthernetIP Configuration</h1><button class="btn btn-primary" onclick="showAddModal()">Add New Device</button>
+    <h1>EthernetIP Configuration</h1>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" onclick="showDetectModal()">Detect Device</button>
+        <button class="btn btn-primary" onclick="showAddModal()">Add New Device</button>
+    </div>
 </div>
 
 <!-- Search Filter -->
@@ -530,12 +534,191 @@ function filterTable() {
         <div class="modal-footer"><button class="btn btn-secondary" onclick="closeTagsModal()">Close</button></div>
     </div>
 </div>
+
+<!-- Detect Device Modal -->
+<div id="detectModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Detect EthernetIP Devices</h2><button class="close" onclick="closeDetectModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="detectForm">
+                <div class="form-group">
+                    <label>IP Range (e.g., 192.168.1.0/24)</label>
+                    <input type="text" id="detect_ip_range" required placeholder="192.168.1.0/24">
+                </div>
+                <div class="form-group">
+                    <label>Port (default: 2222)</label>
+                    <input type="number" id="detect_port" value="2222" min="1" max="65535">
+                </div>
+                <div class="form-group">
+                    <label>Timeout (seconds)</label>
+                    <input type="number" id="detect_timeout" value="5" step="0.1" min="0.5">
+                </div>
+            </form>
+            <div id="detectedDevicesSection" style="display:none; margin-top: 25px;">
+                <h3 style="margin: 0 0 15px 0; color: #333;">Detected Devices</h3>
+                <div id="detectedDevicesList" class="tags-list" style="max-height: 350px;">
+                    <p style="text-align:center;color:#666;padding:20px;">No devices detected</p>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeDetectModal()">Cancel</button>
+            <button class="btn btn-primary" id="detectBtn" onclick="startDeviceDetection()">Start Detection</button>
+            <button class="btn btn-primary" id="addDetectedBtn" onclick="addSelectedDetectedDevices()" style="display:none;">Add Selected Devices</button>
+        </div>
+    </div>
+</div>
+
 <script>function showAddModal() { document.getElementById('addModal').style.display = 'block' } function closeAddModal() { document.getElementById('addModal').style.display = 'none'; document.getElementById('discoveredTags').style.display = 'none'; document.getElementById('tagsList').innerHTML = '' } function showEditModal(id, name, hwid, description, ip, slot, timeout, polling_interval) { document.getElementById('editModal').style.display = 'block'; document.getElementById('edit_config_id').value = id; document.getElementById('edit_name').value = name; document.getElementById('edit_hwid').value = hwid; document.getElementById('edit_description').value = description; document.getElementById('edit_ip_address').value = ip; document.getElementById('edit_slot').value = slot; document.getElementById('edit_timeout').value = timeout; document.getElementById('edit_polling_interval').value = polling_interval; loadDeviceTags(id); } function closeEditModal() { document.getElementById('editModal').style.display = 'none' } function submitEditForm() { const form = document.getElementById('editForm'); const checkboxes = document.querySelectorAll('#editTagsList .tag-checkbox:checked'); const selectedTags = Array.from(checkboxes).map(cb => cb.value); let input = form.querySelector('input[name="selected_tags"]'); if (!input) { input = document.createElement('input'); input.type = 'hidden'; input.name = 'selected_tags'; form.appendChild(input); } input.value = JSON.stringify(selectedTags); console.log('Edit - selected tags:', selectedTags.length); form.submit() } function closeTagsModal() { document.getElementById('tagsModal').style.display = 'none' } function submitAddForm() { const form = document.getElementById('addForm'); const checkboxes = document.querySelectorAll('#tagsList .tag-checkbox:checked'); const selectedTags = Array.from(checkboxes).map(cb => cb.value); console.log('Selected tags array:', selectedTags); console.log('Number of checked boxes:', checkboxes.length); if (selectedTags.length > 0) { let input = form.querySelector('input[name="selected_tags"]'); if (!input) { input = document.createElement('input'); input.type = 'hidden'; input.name = 'selected_tags'; form.appendChild(input); } input.value = JSON.stringify(selectedTags); console.log('JSON value being submitted:', input.value); } else { console.warn('No tags selected - device will be added without tags'); } form.submit() } async function discoverNewDeviceTags() { const ip = document.getElementById('new_ip_address').value, slot = document.getElementById('new_slot').value, timeout = document.getElementById('new_timeout').value; if (!ip) { alert('Please enter IP address first'); return } const btn = event.target; btn.disabled = true; btn.innerHTML = '<i class="material-icons rotating" style="vertical-align:middle;font-size:18px">sync</i> Discovering...'; try { const r = await fetch('/api/ethernetip/discover-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip_address: ip, slot: parseInt(slot), timeout: parseFloat(timeout) }) }); const d = await r.json(); if (d.success) { displayTags(d.tags); document.getElementById('discoveredTags').style.display = 'block' } else { alert('Failed: ' + d.message) } } catch (e) { alert('Error: ' + e.message) } finally { btn.disabled = false; btn.innerHTML = '<i class="material-icons" style="vertical-align:middle;font-size:18px">search</i> Discover Tags' } } function displayTags(tags) { const list = document.getElementById('tagsList'); list.innerHTML = ''; document.getElementById('tagCount').textContent = tags.length; if (!tags.length) { list.innerHTML = '<p style="padding:12px;color:#666;text-align:center">No tags found</p>'; return } tags.forEach((tag, i) => { const item = document.createElement('div'); item.className = 'tag-item'; item.setAttribute('data-tag-name', tag.name.toLowerCase()); item.setAttribute('data-tag-type', tag.data_type.toLowerCase()); item.innerHTML = '<input type="checkbox" class="tag-checkbox" id="tag_' + i + '" value="' + tag.name + '" checked onchange="updateTagCount()"><label for="tag_' + i + '"><strong>' + tag.name + '</strong><span>Data Type: ' + tag.data_type + '</span></label>'; list.appendChild(item) }); updateTagCount(); console.log('Displayed ' + tags.length + ' tags with checkboxes') } function updateTagCount() { const checked = document.querySelectorAll('#tagsList .tag-checkbox:checked').length; const total = document.querySelectorAll('#tagsList .tag-checkbox').length; const countElem = document.getElementById('tagSelectedCount'); if (countElem) { countElem.textContent = checked + ' selected'; countElem.style.display = total > 0 ? 'inline-block' : 'none'; } } function filterTagList() { const searchValue = document.getElementById('tagSearchFilter').value.toLowerCase(); const items = document.querySelectorAll('#tagsList .tag-item'); let visibleCount = 0; items.forEach(item => { const tagName = item.getAttribute('data-tag-name') || ''; const tagType = item.getAttribute('data-tag-type') || ''; if (tagName.includes(searchValue) || tagType.includes(searchValue)) { item.style.display = ''; visibleCount++; } else { item.style.display = 'none'; } }); } function toggleSelectAllTags() { const checkboxes = Array.from(document.querySelectorAll('#tagsList .tag-item')).filter(item => item.style.display !== 'none').map(item => item.querySelector('.tag-checkbox')); const allChecked = checkboxes.every(cb => cb.checked); checkboxes.forEach(cb => cb.checked = !allChecked); document.getElementById('selectAllTagsText').textContent = allChecked ? 'Select All' : 'Deselect All'; updateTagCount(); } 
 async function loadDeviceTags(configId) { const list = document.getElementById('editTagsList'); list.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">Loading tags...</p>'; try { const r = await fetch('/api/ethernetip/discover-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config_id: configId }) }); const d = await r.json(); if (d.success) { displayEditTags(d.tags, d.existing_tags || []); } else { list.innerHTML = '<p style="text-align:center;color:#d32f2f;padding:20px;">Failed to load tags: ' + d.message + '</p>'; } } catch (e) { list.innerHTML = '<p style="text-align:center;color:#d32f2f;padding:20px;">Error: ' + e.message + '</p>'; } } 
 function displayEditTags(allTags, existingTags) { const list = document.getElementById('editTagsList'); list.innerHTML = ''; if (!allTags.length) { list.innerHTML = '<p style="padding:12px;color:#666;text-align:center">No tags found</p>'; return } const existingTagNames = new Set(existingTags.filter(t => t.enabled).map(t => t.tag_name)); allTags.forEach((tag, i) => { const item = document.createElement('div'); item.className = 'tag-item'; item.setAttribute('data-tag-name', tag.name.toLowerCase()); item.setAttribute('data-tag-type', tag.data_type.toLowerCase()); const isChecked = existingTagNames.has(tag.name); item.innerHTML = '<input type="checkbox" class="tag-checkbox" id="edit_tag_' + i + '" value="' + tag.name + '" ' + (isChecked ? 'checked' : '') + ' onchange="updateEditTagCount()"><label for="edit_tag_' + i + '"><strong>' + tag.name + '</strong><span>Data Type: ' + tag.data_type + '</span></label>'; list.appendChild(item) }); updateEditTagCount(); } 
 function updateEditTagCount() { const checked = document.querySelectorAll('#editTagsList .tag-checkbox:checked').length; const total = document.querySelectorAll('#editTagsList .tag-checkbox').length; const countElem = document.getElementById('editTagSelectedCount'); if (countElem) { countElem.textContent = checked + ' selected'; countElem.style.display = total > 0 ? 'inline-block' : 'none'; } } 
 function filterEditTagList() { const searchValue = document.getElementById('editTagSearchFilter').value.toLowerCase(); const items = document.querySelectorAll('#editTagsList .tag-item'); items.forEach(item => { const tagName = item.getAttribute('data-tag-name') || ''; const tagType = item.getAttribute('data-tag-type') || ''; if (tagName.includes(searchValue) || tagType.includes(searchValue)) { item.style.display = ''; } else { item.style.display = 'none'; } }); } 
 function toggleEditSelectAllTags() { const checkboxes = Array.from(document.querySelectorAll('#editTagsList .tag-item')).filter(item => item.style.display !== 'none').map(item => item.querySelector('.tag-checkbox')); const allChecked = checkboxes.every(cb => cb.checked); checkboxes.forEach(cb => cb.checked = !allChecked); document.getElementById('editSelectAllTagsText').textContent = allChecked ? 'Select All' : 'Deselect All'; updateEditTagCount(); } 
-async function showDeviceTags(configId) { const modal = document.getElementById('tagsModal'), content = document.getElementById('tagsContent'), title = document.getElementById('tagsModalTitle'); title.textContent = 'Configured Tags'; modal.style.display = 'block'; content.innerHTML = '<p style="text-align:center;color:#666"><i class="material-icons rotating" style="font-size:48px;display:block;margin:20px auto">sync</i>Loading tags...</p>'; try { const r = await fetch('/api/ethernetip/device-tags/' + configId); const d = await r.json(); if (d.success && d.tags.length > 0) { let html = '<h3 style="margin:0 0 15px 0;color:#333">Configured Tags (' + d.tags.length + ')</h3><table style="width:100%"><thead><tr><th>Tag Name</th><th>Data Type</th><th>Enabled</th></tr></thead><tbody>'; d.tags.forEach(tag => { html += '<tr><td><strong>' + tag.tag_name + '</strong></td><td>' + tag.data_type + '</td><td>' + (tag.enabled ? '<span style="color:#28a745">✓ Yes</span>' : '<span style="color:#dc3545">✗ No</span>') + '</td></tr>' }); html += '</tbody></table>'; content.innerHTML = html } else { content.innerHTML = '<div class="empty-state"><i class="material-icons">info</i><h3>No Tags Configured</h3><p>Click "Discover New" to find and add tags</p></div>' } } catch (e) { content.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error: ' + e.message + '</p></div>' } } async function discoverTags(configId) { const modal = document.getElementById('tagsModal'), content = document.getElementById('tagsContent'), title = document.getElementById('tagsModalTitle'); title.textContent = 'Discover New Tags'; modal.style.display = 'block'; content.innerHTML = '<p style="text-align:center;color:#666"><i class="material-icons rotating" style="font-size:48px;display:block;margin:20px auto">sync</i>Discovering new tags...</p>'; try { const r = await fetch('/api/ethernetip/discover-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config_id: configId }) }); const d = await r.json(); if (d.success && d.tags.length > 0) { let html = '<h3 style="margin:0 0 15px 0;color:#333">Discovered Tags (' + d.tags.length + ')</h3><table style="width:100%"><thead><tr><th>Tag Name</th><th>Data Type</th></tr></thead><tbody>'; d.tags.forEach(tag => { html += '<tr><td><strong>' + tag.name + '</strong></td><td>' + tag.data_type + '</td></tr>' }); html += '</tbody></table>'; content.innerHTML = html } else { content.innerHTML = '<div class="empty-state"><i class="material-icons">search_off</i><h3>No Tags Found</h3><p>No tags discovered from this device</p></div>' } } catch (e) { content.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error: ' + e.message + '</p></div>' } } async function updateConnectionStatus() { document.querySelectorAll('[id^="status-"]').forEach(async e => { const id = e.id.replace('status-', ''); try { const r = await fetch('/api/ethernetip/connection-status/' + id); const d = await r.json(); if (d.success) { e.textContent = d.connected ? 'Connected' : 'Disconnected'; e.className = 'status-badge ' + (d.connected ? 'status-connected' : 'status-disconnected') } else { e.textContent = 'Unknown' } } catch (err) { e.textContent = 'Error'; e.className = 'status-badge status-disconnected' } }) } window.onclick = function (e) { const addModal = document.getElementById('addModal'), editModal = document.getElementById('editModal'), tagsModal = document.getElementById('tagsModal'); if (e.target == addModal) closeAddModal(); if (e.target == editModal) closeEditModal(); if (e.target == tagsModal) closeTagsModal() }; updateConnectionStatus(); setInterval(updateConnectionStatus, 10000)</script>
+async function showDeviceTags(configId) { const modal = document.getElementById('tagsModal'), content = document.getElementById('tagsContent'), title = document.getElementById('tagsModalTitle'); title.textContent = 'Configured Tags'; modal.style.display = 'block'; content.innerHTML = '<p style="text-align:center;color:#666"><i class="material-icons rotating" style="font-size:48px;display:block;margin:20px auto">sync</i>Loading tags...</p>'; try { const r = await fetch('/api/ethernetip/device-tags/' + configId); const d = await r.json(); if (d.success && d.tags.length > 0) { let html = '<h3 style="margin:0 0 15px 0;color:#333">Configured Tags (' + d.tags.length + ')</h3><table style="width:100%"><thead><tr><th>Tag Name</th><th>Data Type</th><th>Enabled</th></tr></thead><tbody>'; d.tags.forEach(tag => { html += '<tr><td><strong>' + tag.tag_name + '</strong></td><td>' + tag.data_type + '</td><td>' + (tag.enabled ? '<span style="color:#28a745">✓ Yes</span>' : '<span style="color:#dc3545">✗ No</span>') + '</td></tr>' }); html += '</tbody></table>'; content.innerHTML = html } else { content.innerHTML = '<div class="empty-state"><i class="material-icons">info</i><h3>No Tags Configured</h3><p>Click "Discover New" to find and add tags</p></div>' } } catch (e) { content.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error: ' + e.message + '</p></div>' } } async function discoverTags(configId) { const modal = document.getElementById('tagsModal'), content = document.getElementById('tagsContent'), title = document.getElementById('tagsModalTitle'); title.textContent = 'Discover New Tags'; modal.style.display = 'block'; content.innerHTML = '<p style="text-align:center;color:#666"><i class="material-icons rotating" style="font-size:48px;display:block;margin:20px auto">sync</i>Discovering new tags...</p>'; try { const r = await fetch('/api/ethernetip/discover-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config_id: configId }) }); const d = await r.json(); if (d.success && d.tags.length > 0) { let html = '<h3 style="margin:0 0 15px 0;color:#333">Discovered Tags (' + d.tags.length + ')</h3><table style="width:100%"><thead><tr><th>Tag Name</th><th>Data Type</th></tr></thead><tbody>'; d.tags.forEach(tag => { html += '<tr><td><strong>' + tag.name + '</strong></td><td>' + tag.data_type + '</td></tr>' }); html += '</tbody></table>'; content.innerHTML = html } else { content.innerHTML = '<div class="empty-state"><i class="material-icons">search_off</i><h3>No Tags Found</h3><p>No tags discovered from this device</p></div>' } } catch (e) { content.innerHTML = '<div style="color:#d32f2f;text-align:center;padding:20px"><i class="material-icons" style="font-size:48px;display:block;margin-bottom:10px">error</i><p>Error: ' + e.message + '</p></div>' } } async function updateConnectionStatus() { document.querySelectorAll('[id^="status-"]').forEach(async e => { const id = e.id.replace('status-', ''); try { const r = await fetch('/api/ethernetip/connection-status/' + id); const d = await r.json(); if (d.success) { e.textContent = d.connected ? 'Connected' : 'Disconnected'; e.className = 'status-badge ' + (d.connected ? 'status-connected' : 'status-disconnected') } else { e.textContent = 'Unknown' } } catch (err) { e.textContent = 'Error'; e.className = 'status-badge status-disconnected' } }) } 
+
+// Device Detection Functions
+let detectedDevices = [];
+let selectedDetectedDevices = new Set();
+
+function showDetectModal() { 
+    document.getElementById('detectModal').style.display = 'block';
+    document.getElementById('detectedDevicesSection').style.display = 'none';
+    document.getElementById('detectBtn').style.display = 'inline-block';
+    document.getElementById('addDetectedBtn').style.display = 'none';
+    detectedDevices = [];
+    selectedDetectedDevices.clear();
+}
+
+function closeDetectModal() {
+    document.getElementById('detectModal').style.display = 'none';
+    detectedDevices = [];
+    selectedDetectedDevices.clear();
+}
+
+async function startDeviceDetection() {
+    const ipRange = document.getElementById('detect_ip_range').value.trim();
+    const port = parseInt(document.getElementById('detect_port').value) || 2222;
+    const timeout = parseFloat(document.getElementById('detect_timeout').value) || 5;
+    
+    if (!ipRange) {
+        alert('Please enter an IP range');
+        return;
+    }
+    
+    const btn = document.getElementById('detectBtn');
+    btn.disabled = true;
+    btn.textContent = 'Detecting...';
+    
+    try {
+        const response = await fetch('/api/ethernetip/detect-devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ip_range: ipRange,
+                port: port,
+                timeout: timeout
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.devices.length > 0) {
+            detectedDevices = data.devices;
+            selectedDetectedDevices.clear();
+            displayDetectedDevices();
+            document.getElementById('detectedDevicesSection').style.display = 'block';
+            document.getElementById('detectBtn').style.display = 'none';
+            document.getElementById('addDetectedBtn').style.display = 'inline-block';
+        } else {
+            alert(data.message || 'No devices found in the specified range');
+        }
+    } catch (error) {
+        alert('Error during detection: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Start Detection';
+    }
+}
+
+function displayDetectedDevices() {
+    const listContainer = document.getElementById('detectedDevicesList');
+    listContainer.innerHTML = '';
+    
+    detectedDevices.forEach((device, index) => {
+        const item = document.createElement('div');
+        item.className = 'tag-item';
+        item.style.cursor = 'pointer';
+        item.onclick = () => toggleDeviceSelection(index);
+        
+        const isSelected = selectedDetectedDevices.has(index);
+        item.innerHTML = `
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="event.stopPropagation(); toggleDeviceSelection(${index})">
+            <div style="flex:1;">
+                <strong style="color:#333; font-size:14px;">${device.ip_address}</strong>
+                <div style="font-size:12px; color:#888; margin-top:4px;">Slot: ${device.slot}, Timeout: ${device.timeout}s, Polling: ${device.polling_interval}ms</div>
+            </div>
+        `;
+        listContainer.appendChild(item);
+    });
+}
+
+function toggleDeviceSelection(index) {
+    if (selectedDetectedDevices.has(index)) {
+        selectedDetectedDevices.delete(index);
+    } else {
+        selectedDetectedDevices.add(index);
+    }
+    displayDetectedDevices();
+}
+
+async function addSelectedDetectedDevices() {
+    if (selectedDetectedDevices.size === 0) {
+        alert('Please select at least one device');
+        return;
+    }
+    
+    const deviceList = Array.from(selectedDetectedDevices).map(index => detectedDevices[index]);
+    const btn = document.getElementById('addDetectedBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding Devices...';
+    
+    try {
+        const response = await fetch('/api/ethernetip/add-detected-devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices: deviceList })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Devices added successfully!');
+            closeDetectModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to add devices'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Selected Devices';
+    }
+}
+
+window.onclick = function (e) { 
+    const addModal = document.getElementById('addModal'), 
+          editModal = document.getElementById('editModal'), 
+          tagsModal = document.getElementById('tagsModal'),
+          detectModal = document.getElementById('detectModal');
+    if (e.target == addModal) closeAddModal(); 
+    if (e.target == editModal) closeEditModal(); 
+    if (e.target == tagsModal) closeTagsModal();
+    if (e.target == detectModal) closeDetectModal();
+}; 
+updateConnectionStatus(); setInterval(updateConnectionStatus, 10000)</script>
 
 {% endblock %}
