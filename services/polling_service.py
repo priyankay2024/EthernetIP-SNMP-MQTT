@@ -402,6 +402,8 @@ class PollingService:
                         self._last_reconnect_attempt[device_key] = current_time
                         logger.info(f"Attempting to reconnect MQTT broker: {config.name}")
                         success, message = self.mqtt_service.connect_broker(config)
+                        if self.mqtt_service and config.subscribe_topic:
+                            self.mqtt_service.restart_subscriber(config, self.app)
                         if success:
                             logger.info(f"✓ Reconnected to MQTT broker {config.name}")
                         else:
@@ -431,12 +433,16 @@ class PollingService:
                         logger.debug(f"MQTT broker {mqtt_config.broker} not connected")
                         continue
                     
+                    # Check if publish_topic is configured
+                    if not mqtt_config.publish_topic:
+                        logger.debug(f"No publish topic configured for MQTT broker {mqtt_config.name}")
+                        continue
+                    
                     # Use HWID if available, otherwise fall back to device ID
                     device_identifier = device_config.hwid if device_config.hwid else device_config.id
                     
-                    # Build topic: {topic_prefix}/{hwid or device_id}
-                    topic_prefix = mqtt_config.topic_prefix or 'test'
-                    topic = f"{topic_prefix}/{device_identifier}"
+                    # Use the configured publish topic directly (with device identifier appended)
+                    topic = f"{mqtt_config.publish_topic}/{device_identifier}"
                     
                     # Get format preference
                     publish_format = mqtt_config.publish_format or 'json'

@@ -288,7 +288,6 @@ function filterTable() {
                 <th>Broker Name</th>
                 <th>Broker Address</th>
                 <th>Port</th>
-                <th>Topic Prefix</th>
                 <th>Format</th>
                 <th>TLS</th>
                 <th>Connection Status</th>
@@ -300,12 +299,12 @@ function filterTable() {
                 <td>{{ config.name }}</td>
                 <td>{{ config.broker }}</td>
                 <td>{{ config.port }}</td>
-                <td>{{ config.topic_prefix }}</td>
                 <td>{{ config.publish_format or 'json' }}</td>
                 <td>{% if config.use_tls %}<span style="color:#28a745">✓ Enabled</span>{% else %}<span
                         style="color:#6c757d">✗ Disabled</span>{% endif %}</td>
                 <td><span class="status-badge status-disconnected" id="status-{{ config.id }}">Checking...</span></td>
                 <td>
+                    <button class="action-btn" onclick="showEditModal({{ config.id }})">Edit</button>
                     <form method="POST" style="display:inline"><input type="hidden" name="action" value="delete"><input
                             type="hidden" name="config_id" value="{{ config.id }}"><button type="submit"
                             class="action-btn secondary" onclick="return confirm('Delete this broker?')">Delete</button>
@@ -344,8 +343,6 @@ function filterTable() {
                         placeholder="username"></div>
                 <div class="form-group"><label>Password (optional)</label><input type="password" name="password"
                         placeholder="password"></div>
-                <div class="form-group"><label>Topic Prefix</label><input type="text" name="topic_prefix" value="bridge"
-                        required></div>
                 <div class="form-group">
                     <label>Publish Format</label>
                     <select name="publish_format" required>
@@ -357,11 +354,124 @@ function filterTable() {
                     <div class="form-check"><input type="checkbox" name="use_tls" id="use_tls"><label
                             for="use_tls">Enable TLS/SSL</label></div>
                 </div>
+                
+                <!-- Data Publishing Section -->
+                <h3 style="margin: 25px 0 15px 0; color: #333; border-top: 1px solid #ddd; padding-top: 20px;">Data Publishing</h3>
+                <div class="form-group"><label>Publish Topic</label><input type="text" name="publish_topic"
+                        placeholder="sensors/data" required></div>
+                <div class="form-group"><label>Subscribe Topic (optional)</label><input type="text" name="subscribe_topic"
+                        placeholder="commands/device"></div>
+                <div class="form-group"><label>Publish Interval (seconds)</label><input type="number" name="publish_interval" value="5" min="1"
+                        required></div>
             </form>
         </div>
         <div class="modal-footer"><button class="btn btn-secondary" onclick="closeAddModal()">Cancel</button><button
                 class="btn btn-primary" onclick="submitAddForm()">Add Broker</button></div>
     </div>
 </div>
-<script>function showAddModal() { document.getElementById('addModal').style.display = 'block' } function closeAddModal() { document.getElementById('addModal').style.display = 'none' } function submitAddForm() { document.getElementById('addForm').submit() } async function updateConnectionStatus() { document.querySelectorAll('[id^="status-"]').forEach(async e => { const t = e.id.replace('status-', ''); try { const o = await fetch('/api/mqtt/connection-status/' + t), n = await o.json(); n.success ? (e.textContent = n.connected ? 'Connected' : 'Disconnected', e.className = 'status-badge ' + (n.connected ? 'status-connected' : 'status-disconnected')) : e.textContent = 'Unknown' } catch (t) { e.textContent = 'Error', e.className = 'status-badge status-disconnected' } }) } window.onclick = function (e) { const t = document.getElementById('addModal'); e.target == t && closeAddModal() }, updateConnectionStatus(), setInterval(updateConnectionStatus, 1e4)</script>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Edit MQTT Broker</h2><button class="close" onclick="closeEditModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editForm" method="POST"><input type="hidden" name="action" value="update">
+                <input type="hidden" name="config_id" id="editConfigId">
+                <div class="form-group"><label>Broker Name</label><input type="text" name="name" id="editName" required
+                        placeholder="My MQTT Broker"></div>
+                <div class="form-group"><label>Broker Address</label><input type="text" name="broker" id="editBroker" required
+                        placeholder="mqtt.example.com"></div>
+                <div class="form-group"><label>Port</label><input type="number" name="port" id="editPort" value="1883" required></div>
+                <div class="form-group"><label>Username (optional)</label><input type="text" name="username" id="editUsername"
+                        placeholder="username"></div>
+                <div class="form-group"><label>Password (optional)</label><input type="password" name="password" id="editPassword"
+                        placeholder="Leave empty to keep current"></div>
+                <div class="form-group">
+                    <label>Publish Format</label>
+                    <select name="publish_format" id="editPublishFormat" required>
+                        <option value="json">JSON</option>
+                        <option value="string">String (CSV)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <div class="form-check"><input type="checkbox" name="use_tls" id="editUseTls"><label
+                            for="editUseTls">Enable TLS/SSL</label></div>
+                </div>
+                
+                <!-- Data Publishing Section -->
+                <h3 style="margin: 25px 0 15px 0; color: #333; border-top: 1px solid #ddd; padding-top: 20px;">Data Publishing</h3>
+                <div class="form-group"><label>Publish Topic</label><input type="text" name="publish_topic" id="editPublishTopic"
+                        placeholder="sensors/data" required></div>
+                <div class="form-group"><label>Subscribe Topic (optional)</label><input type="text" name="subscribe_topic" id="editSubscribeTopic"
+                        placeholder="commands/device"></div>
+                <div class="form-group"><label>Publish Interval (seconds)</label><input type="number" name="publish_interval" id="editPublishInterval" value="5" min="1"
+                        required></div>
+                <div class="form-group">
+                    <div class="form-check"><input type="checkbox" name="enabled" id="editEnabled"><label
+                            for="editEnabled">Enable Configuration</label></div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer"><button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button><button
+                class="btn btn-primary" onclick="submitEditForm()">Update Broker</button></div>
+    </div>
+</div>
+
+<script>
+function showAddModal() { document.getElementById('addModal').style.display = 'block' } 
+function closeAddModal() { document.getElementById('addModal').style.display = 'none' } 
+function submitAddForm() { document.getElementById('addForm').submit() } 
+
+async function showEditModal(configId) {
+    try {
+        const response = await fetch(`/api/mqtt/config/${configId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('editConfigId').value = data.id;
+            document.getElementById('editName').value = data.name;
+            document.getElementById('editBroker').value = data.broker;
+            document.getElementById('editPort').value = data.port;
+            document.getElementById('editUsername').value = data.username;
+            document.getElementById('editPublishFormat').value = data.publish_format;
+            document.getElementById('editUseTls').checked = data.use_tls;
+            document.getElementById('editPublishTopic').value = data.publish_topic;
+            document.getElementById('editSubscribeTopic').value = data.subscribe_topic;
+            document.getElementById('editPublishInterval').value = data.publish_interval;
+            document.getElementById('editEnabled').checked = data.enabled;
+            document.getElementById('editModal').style.display = 'block';
+        } else {
+            alert('Error loading config: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error fetching config:', error);
+        alert('Error loading config data');
+    }
+}
+
+function closeEditModal() { 
+    document.getElementById('editModal').style.display = 'none' 
+} 
+
+function submitEditForm() { 
+    document.getElementById('editForm').submit() 
+} 
+
+async function updateConnectionStatus() { document.querySelectorAll('[id^="status-"]').forEach(async e => { const t = e.id.replace('status-', ''); try { const o = await fetch('/api/mqtt/connection-status/' + t), n = await o.json(); n.success ? (e.textContent = n.connected ? 'Connected' : 'Disconnected', e.className = 'status-badge ' + (n.connected ? 'status-connected' : 'status-disconnected')) : e.textContent = 'Unknown' } catch (t) { e.textContent = 'Error', e.className = 'status-badge status-disconnected' } }) } 
+
+window.onclick = function (e) { 
+    const addModal = document.getElementById('addModal');
+    const editModal = document.getElementById('editModal'); 
+    if (e.target == addModal) {
+        closeAddModal();
+    } else if (e.target == editModal) {
+        closeEditModal();
+    }
+};
+
+updateConnectionStatus();
+setInterval(updateConnectionStatus, 1e4);
+</script>
 {% endblock %}

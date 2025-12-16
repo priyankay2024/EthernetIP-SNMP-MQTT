@@ -879,25 +879,40 @@ def config_mqtt():
         _, _, mqtt_service, _, _ = get_services()
         
         if action == 'add':
+            publish_topic = request.form.get('publish_topic')
+            if not publish_topic:
+                flash('Publish Topic is required', 'error')
+                return redirect(url_for('main.config_mqtt'))
+            
             config = MQTTConfig(
                 name=request.form.get('name', 'Default'),
                 broker=request.form.get('broker'),
                 port=int(request.form.get('port', 1883)),
                 username=request.form.get('username') or None,
                 password=request.form.get('password') or None,
-                topic_prefix=request.form.get('topic_prefix', 'bridge'),
                 publish_format=request.form.get('publish_format', 'json'),
                 use_tls=request.form.get('use_tls') == 'on',
+                publish_topic=publish_topic,  # Required field
+                subscribe_topic=request.form.get('subscribe_topic') or None,
+                publish_interval=int(request.form.get('publish_interval', 5)),
                 enabled=True  # Always enable new devices
             )
             db.session.add(config)
             db.session.commit()
             
-            # Auto-connect the broker
+            # Auto-connect the broker and start subscriber if needed
             if mqtt_service:
                 success, message = mqtt_service.connect_broker(config)
                 if success:
-                    flash(f'MQTT broker added and connected: {config.name}', 'success')
+                    # Start subscriber for two-way communication
+                    if config.subscribe_topic:
+                        sub_success, sub_message = mqtt_service.start_subscriber(config, current_app._get_current_object())
+                        if sub_success:
+                            flash(f'MQTT broker added and connected with subscriber: {config.name}', 'success')
+                        else:
+                            flash(f'MQTT broker added and connected, but subscriber failed: {sub_message}', 'warning')
+                    else:
+                        flash(f'MQTT broker added and connected: {config.name}', 'success')
                 else:
                     flash(f'MQTT broker added but connection failed: {message}', 'warning')
             else:
@@ -907,16 +922,31 @@ def config_mqtt():
             config_id = request.form.get('config_id')
             config = MQTTConfig.query.get(config_id)
             if config:
+                publish_topic = request.form.get('publish_topic')
+                if not publish_topic:
+                    flash('Publish Topic is required', 'error')
+                    return redirect(url_for('main.config_mqtt'))
+                
                 config.name = request.form.get('name', 'Default')
                 config.broker = request.form.get('broker')
                 config.port = int(request.form.get('port', 1883))
                 config.username = request.form.get('username') or None
-                config.password = request.form.get('password') or None
-                config.topic_prefix = request.form.get('topic_prefix', 'bridge')
+                # Only update password if provided
+                password = request.form.get('password')
+                if password:
+                    config.password = password
                 config.publish_format = request.form.get('publish_format', 'json')
                 config.use_tls = request.form.get('use_tls') == 'on'
+                config.publish_topic = publish_topic  # Required field
+                config.subscribe_topic = request.form.get('subscribe_topic') or None
+                config.publish_interval = int(request.form.get('publish_interval', 5))
                 config.enabled = request.form.get('enabled') == 'on'
                 db.session.commit()
+                
+                # Restart subscriber if subscribe topic changed
+                if mqtt_service and config.subscribe_topic:
+                    mqtt_service.restart_subscriber(config, current_app._get_current_object())
+                
                 flash('MQTT configuration updated successfully', 'success')
         
         elif action == 'delete':
@@ -970,6 +1000,28 @@ def mqtt_connection_status(config_id):
         'success': False,
         'message': 'MQTT service not available'
     }), 503
+
+@main_bp.route('/api/mqtt/config/<int:config_id>')
+def get_mqtt_config(config_id):
+    """Get MQTT config data for editing"""
+    config = MQTTConfig.query.get(config_id)
+    if not config:
+        return jsonify({'success': False, 'message': 'Config not found'}), 404
+    
+    return jsonify({
+        'success': True,
+        'id': config.id,
+        'name': config.name,
+        'broker': config.broker,
+        'port': config.port,
+        'username': config.username or '',
+        'publish_format': config.publish_format,
+        'use_tls': config.use_tls,
+        'publish_topic': config.publish_topic or '',
+        'subscribe_topic': config.subscribe_topic or '',
+        'publish_interval': config.publish_interval or 5,
+        'enabled': config.enabled
+    })
 
 @main_bp.route('/tags', methods=['GET'])
 def tags():
@@ -1077,6 +1129,7 @@ def objects():
     per_page = 10
     search_device = request.args.get('device', '')
     search_object = request.args.get('object', '')
+    search_text = request.args.get('search', '').strip()
     
     # Build query with joins
     query = db.session.query(SNMPObject).join(SNMPConfig)
@@ -1086,6 +1139,18 @@ def objects():
         query = query.filter(SNMPConfig.id == int(search_device))
     if search_object:
         query = query.filter(SNMPObject.name.ilike(f'%{search_object}%'))
+    
+    # Apply general search filter
+    if search_text:
+        from sqlalchemy import or_
+        search_filter = or_(
+            SNMPObject.name.ilike(f'%{search_text}%'),
+            SNMPObject.oid.ilike(f'%{search_text}%'),
+            SNMPObject.description.ilike(f'%{search_text}%'),
+            SNMPConfig.name.ilike(f'%{search_text}%'),
+            SNMPConfig.host.ilike(f'%{search_text}%')
+        )
+        query = query.filter(search_filter)
     
     # Paginate
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -1102,6 +1167,7 @@ def objects():
                          pagination=pagination,
                          search_device=search_device,
                          search_object=search_object,
+                         search_text=search_text,
                          all_object_names=all_object_names,
                          now=datetime.utcnow)
 

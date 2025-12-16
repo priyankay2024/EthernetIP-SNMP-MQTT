@@ -330,6 +330,121 @@ class SNMPService:
             logger.error(f"SNMP walk failed: {str(e)}")
             return False, str(e)
     
+    def write_oid(self, config, oid, value, data_type='INTEGER'):
+        """Write value to SNMP OID"""
+        try:
+            from pysnmp.hlapi.v3arch.asyncio import (
+                SnmpEngine, CommunityData, 
+                UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
+                set_cmd
+            )
+            from pysnmp.proto import rfc1902
+            import asyncio
+            
+            # Convert value to appropriate SNMP type
+            snmp_value = None
+            try:
+                if data_type.upper() in ['INTEGER', 'INT', 'COUNTER32', 'GAUGE32']:
+                    snmp_value = rfc1902.Integer32(int(value))
+                elif data_type.upper() in ['STRING', 'OCTETSTRING', 'DISPLAYSTRING']:
+                    snmp_value = rfc1902.OctetString(str(value))
+                elif data_type.upper() in ['COUNTER64']:
+                    snmp_value = rfc1902.Counter64(int(value))
+                elif data_type.upper() in ['UNSIGNED32']:
+                    snmp_value = rfc1902.Unsigned32(int(value))
+                elif data_type.upper() in ['IPADDRESS']:
+                    snmp_value = rfc1902.IpAddress(str(value))
+                else:
+                    # Default to OctetString for unknown types
+                    snmp_value = rfc1902.OctetString(str(value))
+                    
+            except (ValueError, TypeError) as e:
+                logger.error(f"Failed to convert value '{value}' to SNMP type '{data_type}': {str(e)}")
+                return False, f"Invalid value for data type {data_type}"
+            
+            async def write_value():
+                try:
+                    iterator = set_cmd(
+                        SnmpEngine(),
+                        CommunityData(config.community),
+                        await UdpTransportTarget.create((config.host, config.port), timeout=5, retries=2),
+                        ContextData(),
+                        ObjectType(ObjectIdentity(oid), snmp_value)
+                    )
+                    
+                    errorIndication, errorStatus, errorIndex, varBinds = await iterator
+                    return errorIndication, errorStatus, errorIndex, varBinds
+                except asyncio.TimeoutError:
+                    return "Write timeout", None, None, None
+            
+            # Run async operation with proper cleanup
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                errorIndication, errorStatus, errorIndex, varBinds = loop.run_until_complete(
+                    asyncio.wait_for(write_value(), timeout=8)
+                )
+            except asyncio.TimeoutError:
+                errorIndication = "Write timeout"
+                errorStatus = None
+            finally:
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.close()
+            
+            if errorIndication:
+                logger.error(f"SNMP write failed for OID {oid}: {errorIndication}")
+                return False, str(errorIndication)
+            elif errorStatus:
+                logger.error(f"SNMP write error for OID {oid}: {errorStatus.prettyPrint()}")
+                return False, f'{errorStatus.prettyPrint()} at {errorIndex}'
+            else:
+                logger.info(f"Successfully wrote value '{value}' to OID {oid} on {config.host}")
+                return True, "Write successful"
+                
+        except Exception as e:
+            logger.error(f"SNMP write operation failed: {str(e)}")
+            return False, str(e)
+
+    def write_by_name(self, config, parameter_name, value):
+        """Write value to SNMP object by parameter name (finds OID by name)"""
+        try:
+            from models import SNMPObject
+            from database import db
+            
+            # Find the SNMP object by name and config
+            snmp_object = db.session.query(SNMPObject).filter_by(
+                config_id=config.id, 
+                name=parameter_name
+            ).first()
+            
+            if not snmp_object:
+                logger.warning(f"SNMP object with name '{parameter_name}' not found for config {config.id}")
+                return False, f"Parameter '{parameter_name}' not found"
+            
+            # Check if the object is writable
+            if snmp_object.access and 'write' not in snmp_object.access.lower():
+                logger.warning(f"SNMP object '{parameter_name}' is not writable (access: {snmp_object.access})")
+                return False, f"Parameter '{parameter_name}' is read-only"
+            
+            # Write to the OID
+            success, message = self.write_oid(config, snmp_object.oid, value, snmp_object.data_type or 'STRING')
+            
+            if success:
+                # Update last_value in database
+                snmp_object.last_value = str(value)
+                snmp_object.last_read = datetime.utcnow()
+                db.session.commit()
+            
+            return success, message
+            
+        except Exception as e:
+            logger.error(f"Failed to write by name '{parameter_name}': {str(e)}")
+            return False, str(e)
+    
     def detect_devices(self, ip_range, port=161, community='public', version='v2c', timeout=3):
         """Detect SNMP devices in a given IP range"""
         import ipaddress

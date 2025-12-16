@@ -117,12 +117,19 @@ def initialize_app():
                 else:
                     logger.warning(f"✗ Failed to connect to {config.name}: {message}")
             
-            # Connect MQTT brokers
+            # Connect MQTT brokers and start subscribers
             mqtt_configs = db.session.query(models.MQTTConfig).filter_by(enabled=True).all()
             for config in mqtt_configs:
                 success, message = mqtt_service.connect_broker(config)
                 if success:
                     logger.info(f"✓ Connected to MQTT broker: {config.name}")
+                    # Start subscriber for two-way communication if configured
+                    if config.subscribe_topic:
+                        sub_success, sub_message = mqtt_service.start_subscriber(config, app)
+                        if sub_success:
+                            logger.info(f"✓ Started MQTT subscriber for {config.name} on topic: {config.subscribe_topic}")
+                        else:
+                            logger.warning(f"✗ Failed to start subscriber for {config.name}: {sub_message}")
                 else:
                     logger.warning(f"✗ Failed to connect to {config.name}: {message}")
             

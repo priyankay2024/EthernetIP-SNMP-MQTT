@@ -34,9 +34,12 @@ class MQTTConfig(db.Model):
     port = db.Column(db.Integer, default=1883)
     username = db.Column(db.String(100), nullable=True)
     password = db.Column(db.String(255), nullable=True)
-    topic_prefix = db.Column(db.String(100), default="bridge")
     publish_format = db.Column(db.String(20), default="json")  # 'json' or 'string'
     use_tls = db.Column(db.Boolean, default=False)
+    # Data Publishing fields
+    publish_topic = db.Column(db.String(255), nullable=False)  # Now required
+    subscribe_topic = db.Column(db.String(255), nullable=True)
+    publish_interval = db.Column(db.Integer, default=5)  # seconds
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
